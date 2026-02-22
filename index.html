@@ -1,0 +1,2719 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <!-- 作者：扶苏 版权所有 -->
+    <!-- 适配移动端：宽度=device-width表示宽度适应设备屏幕，1.0初始缩放比例 -->
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>遨行管理数据看板</title>
+
+    <!-- 引入外部资源库 -->
+    <!-- Tailwind CSS v3：用于快速构建界面样式的CSS框架 -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome：图标库，提供各种常用图标 -->
+    <link href="https://cdn.jsdelivr.net/npm/font-awesome@4.7.0/css/font-awesome.min.css" rel="stylesheet">
+    <!-- Chart.js：图表库，用于绘制数据可视化图表 -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.8/dist/chart.umd.min.js"></script>
+    <!-- Tailwind 浅色看板配置：扩展主题样式（颜色、字体、阴影等） -->
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+			// 自定义颜色变量：统一管理项目主色调、辅助色等，方便全局复用
+                    colors: {
+                        primary: '#2563eb', // 主蓝色（浅色适配）
+                        secondary: '#64748b', // 浅灰蓝
+                        success: '#10b981', // 成功色（绿色）
+                        warning: '#f59e0b', // 警告色（黄色）
+                        danger: '#ef4444', // 危险色（红色）
+                        info: '#06b6d4', // 信息色（青色）
+                        light: '#f8fafc', // 超浅背景色
+                        dark: '#334155', // 深灰文字（替代纯黑更护眼）
+                        card: '#ffffff', // 卡片背景色（白色）
+                        border: '#e2e8f0', // 边框浅灰色
+                    },
+		    // 自定义字体：设置默认无衬线字体
+                    fontFamily: {
+                        sans: ['Inter', 'system-ui', 'Segoe UI', 'sans-serif'],
+                    },
+		    // 自定义阴影：卡片默认阴影和hover悬浮阴影
+                    boxShadow: {
+                        'card': '0 1px 3px 0 rgba(0, 0, 0, 0.05), 0 1px 2px 0 rgba(0, 0, 0, 0.03)',
+                        'hover': '0 4px 6px -1px rgba(0, 0, 0, 0.08), 0 2px 4px -1px rgba(0, 0, 0, 0.04)',
+                    }
+                }
+            }
+        }
+    </script>
+
+    <!-- 自定义Tailwind工具类：扩展自定义样式类，方便复用 -->
+    <style type="text/tailwindcss">
+        @layer utilities {
+	    /* 性能优化：自动判断元素是否在视口内，不在则不渲染，提升加载速度 */
+            .content-auto {
+                content-visibility: auto;
+            }
+	    /* 卡片过渡动画：所有属性变化时的过渡效果，时长0.2秒，缓动曲线 */
+            .card-transition {
+                transition: all 0.2s ease-in-out;
+            }
+	    /* 导航激活状态样式：左侧蓝色边框+浅蓝背景+主色文字 */
+            .nav-active {
+                @apply bg-primary/10 text-primary border-l-4 border-primary;
+            }
+	    /* 徽章样式：小标签样式，用于显示状态、数量等 */
+            .badge {
+                @apply px-2 py-1 text-xs font-medium rounded-full;
+            }
+	    /* 输入框默认样式：统一所有输入框的外观，聚焦时有蓝色边框和高亮 */
+            .input-default {
+                @apply w-full border border-border rounded-md px-3 py-2 focus:outline-none focus:ring-1 focus:ring-primary focus:border-primary text-dark;
+            }
+ 	    /* 主按钮样式：蓝色背景、白色文字、hover时背景加深 */
+            .btn-primary {
+                @apply bg-primary hover:bg-primary/90 text-white font-medium py-2 px-4 rounded-md transition-all flex items-center gap-2;
+            }
+	    /* 次要按钮样式：浅灰背景、深色文字、hover时背景加深 */
+            .btn-secondary {
+                @apply bg-gray-100 hover:bg-gray-200 text-dark font-medium py-2 px-4 rounded-md transition-all flex items-center gap-2;
+            }
+	    /* 危险按钮样式：红色背景、白色文字、hover时背景加深 */
+            .btn-danger {
+                @apply bg-danger hover:bg-danger/90 text-white font-medium py-2 px-4 rounded-md transition-all flex items-center gap-2;
+            }
+	     /* 排班表日期列冻结样式：首列固定在左侧，不随滚动条移动，z-index确保在最上层 */
+            #guide-schedule-table th:first-child,
+            #guide-schedule-table td:first-child {
+                position: sticky;
+                left: 0;
+                z-index: 10;
+                background: white;
+            }
+            /* 排班单元格最小宽度：确保排班表单元格不会太窄，提升可读性  */
+            .schedule-cell {
+                min-width: 80px;
+            }            
+        }
+    </style>
+</head>
+
+<!-- 页面主体：整体背景色为light，最小高度100vh（占满屏幕），字体为自定义sans，文字色dark -->
+<body class="bg-light min-h-screen font-sans text-dark">
+    <!-- 页面整体布局：flex布局，高度100vh，overflow-hidden隐藏溢出内容 -->
+    <div class="flex h-screen overflow-hidden">
+        <!-- 侧边导航（浅色收缩式） -->
+        <aside class="w-64 bg-card shadow-card z-10 flex flex-col" id="sidebar">
+	    <!-- 侧边栏头部：平台logo和名称区域，内边距5，底部边框分隔 -->
+            <div class="p-5 border-b border-border">
+                <h1 class="text-xl font-bold flex items-center gap-3 text-primary">
+                    <i class="fa fa-car text-lg"></i><!-- 汽车图标 -->
+                    <span>遨行管理平台v2.3</span><!-- 平台名称 -->
+                </h1>
+            </div>
+
+	    <!-- 侧边栏导航菜单：flex-1占满剩余高度，内边距2，顶部间距2 -->
+            <nav class="flex-1 p-2 mt-2">
+                <ul class="space-y-1">
+		    <!-- 数据概览菜单：默认激活状态（nav-active），点击切换到dashboard面板 -->
+                    <li>
+                        <a href="#dashboard" class="nav-link nav-active flex items-center px-4 py-3 rounded-md gap-3" data-target="dashboard">
+                            <i class="fa fa-tachometer fa-fw"></i>
+                            <span>数据概览</span>
+                        </a>
+                    </li>
+		    <!-- 车辆管理菜单：hover时浅灰背景，点击切换到vehicles面板 -->
+                    <li>
+                        <a href="#vehicles" class="nav-link flex items-center px-4 py-3 rounded-md gap-3 hover:bg-gray-50" data-target="vehicles">
+                            <i class="fa fa-bus fa-fw"></i>
+                            <span>车辆管理</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#guides" class="nav-link flex items-center px-4 py-3 rounded-md gap-3 hover:bg-gray-50" data-target="guides">
+                            <i class="fa fa-user fa-fw"></i>
+                            <span>导游管理</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#teams" class="nav-link flex items-center px-4 py-3 rounded-md gap-3 hover:bg-gray-50" data-target="teams">
+                            <i class="fa fa-users fa-fw"></i>
+                            <span>团队调度</span>
+                        </a>
+                    </li>
+                    <li>
+                    <li>
+                        <a href="#schedule" class="nav-link flex items-center px-4 py-3 rounded-md gap-3 hover:bg-gray-50" data-target="schedule">
+                            <i class="fa fa-table fa-fw"></i>
+                            <span>月排班表</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#backup" class="nav-link flex items-center px-4 py-3 rounded-md gap-3 hover:bg-gray-50" data-target="backup">
+                            <i class="fa fa-database fa-fw"></i>
+                            <span>数据备份</span>
+                        </a>
+                    </li>
+                    <li>
+                        <a href="#version" class="nav-link flex items-center px-4 py-3 rounded-md gap-3 hover:bg-gray-50" data-target="version">
+                            <i class="fa fa-file-text-o fa-fw"></i>
+                            <span>版本说明</span>
+                        </a>
+                    </li>
+                </ul>
+            </nav>
+
+ 	    <!-- 侧边栏底部：用户信息区域，浅灰背景，顶部边框分隔 -->
+            <div class="p-4 border-t border-border bg-gray-50">
+                <div class="flex items-center gap-3">
+		    <!-- 用户头像占位：圆形，浅蓝背景，白色图标 -->
+                    <div class="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                        <i class="fa fa-user"></i>
+                    </div>
+		    <!-- 用户信息：名称和邮箱 -->
+                    <div>
+                        <p class="text-sm font-medium">系统管理员</p>
+                        <p class="text-xs text-gray-500">admin@sys.com</p>
+                    </div>
+                </div>
+            </div>
+        </aside>
+
+        <!-- 主内容区（浅色滚动布局）overflow-y-auto垂直滚动，浅背景，内边距6 -->
+        <main class="flex-1 overflow-y-auto bg-light p-6">
+            <!-- 顶部工具栏 响应式布局，移动端垂直排列，桌面端水平排列-->
+            <div class="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-4">
+		<!-- 页面标题区域 -->
+                <div>
+		    <!-- 主标题：响应式字体大小（1.5rem到2rem），加粗，文字色dark -->
+                    <h2 class="text-[clamp(1.5rem,3vw,2rem)] font-bold text-dark" id="page-title">数据概览</h2>
+		    <!-- 副标题：浅灰色小字，说明当前页面功能 -->
+                    <p class="text-gray-500 text-sm">实时监控车辆、导游及团队调度数据</p>
+                </div>
+		<!-- 搜索和刷新按钮区域：宽度100%（移动端）/自动（桌面端） -->
+                <div class="flex items-center gap-3 w-full md:w-auto">
+		    <!-- 搜索框：相对定位（用于放置搜索图标） -->
+                    <div class="relative flex-1 md:flex-initial">
+                        <input type="text" placeholder="" class="input-default pl-10 w-full md:w-64">
+			<!-- 搜索图标：绝对定位在输入框左侧，垂直居中 -->
+                        <i class="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                    </div>
+		    <!-- 刷新按钮：次要按钮样式，点击刷新数据 -->
+                    <button class="btn-secondary" id="btn-refresh-data"><i class="fa fa-refresh"></i><span>刷新</span></button>
+                </div>
+            </div>
+
+            <!-- 数据概览面板 默认激活显示（active），其他面板默认隐藏（hidden） -->
+            <div id="dashboard" class="page-content active">
+                <!-- 核心统计卡片（浅色网格）移动端1列，小屏2列，大屏4列，间距4，底部间距6 -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+		    <!-- 总车辆数卡片：白色背景，圆角，卡片阴影，内边距5，悬浮时阴影增强 -->
+                    <div class="bg-card rounded-lg shadow-card p-5 card-transition hover:shadow-hover">
+                        <div class="flex justify-between items-start">
+			    <!-- 统计数据区域 -->
+                            <div>
+                                <p class="text-gray-500 text-sm">总车辆数</p><!-- 指标名称 -->
+                                <h3 class="text-2xl font-bold mt-1" id="total-vehicles">20</h3><!-- 指标数值 -->
+				<!-- 状态提示：绿色文字，带对勾图标 -->
+                                <p class="text-success text-xs mt-2 flex items-center">
+                                    <i class="fa fa-check-circle mr-1"></i>
+                                    100% 已登记
+                                </p>
+                            </div>
+			    <!-- 图标区域：圆形，浅蓝背景，汽车图标 -->
+                            <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                <i class="fa fa-car"></i>
+                            </div>
+                        </div>
+                    </div>
+		    <!-- 总导游数卡片 -->
+                    <div class="bg-card rounded-lg shadow-card p-5 card-transition hover:shadow-hover">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-gray-500 text-sm">总导游数</p>
+                                <h3 class="text-2xl font-bold mt-1" id="total-guides">20</h3>
+                                <p class="text-success text-xs mt-2 flex items-center">
+                                    <i class="fa fa-check-circle mr-1"></i>
+                                    100% 已认证
+                                </p>
+                            </div>
+                            <div class="w-10 h-10 rounded-full bg-info/10 flex items-center justify-center text-info">
+                                <i class="fa fa-user"></i>
+                            </div>
+                        </div>
+                    </div>
+		    <!-- 当前团数卡片 -->
+                    <div class="bg-card rounded-lg shadow-card p-5 card-transition hover:shadow-hover">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-gray-500 text-sm">当前团数</p>
+                                <h3 class="text-2xl font-bold mt-1" id="total-teams">5</h3>
+                                <p class="text-warning text-xs mt-2 flex items-center">
+                                    <i class="fa fa-clock-o mr-1"></i>
+                                    20%待调度 <!-- 功能待完善 -->
+                                </p>
+                            </div>
+                            <div class="w-10 h-10 rounded-full bg-warning/10 flex items-center justify-center text-warning">
+                                <i class="fa fa-users"></i>
+                            </div>
+                        </div>
+                    </div>
+		    <!-- 资源可用率卡片 -->
+                    <div class="bg-card rounded-lg shadow-card p-5 card-transition hover:shadow-hover">
+                        <div class="flex justify-between items-start">
+                            <div>
+                                <p class="text-gray-500 text-sm">资源可用率</p>
+                                <h3 class="text-2xl font-bold mt-1" id="resource-rate">75%</h3>
+                                <p class="text-primary text-xs mt-2 flex items-center">
+                                    <i class="fa fa-recycle  mr-1"></i>
+                                    =可用车辆+可用导游 / 总车辆+总导游
+                                </p>
+                            </div>
+                            <div class="w-10 h-10 rounded-full bg-success/10 flex items-center justify-center text-success">
+                                <i class="fa fa-pie-chart"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- 图表区域（双列网格）移动端1列，大屏2列 -->
+                <div class="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+		    <!-- 车辆状态分布图表卡片 -->
+                    <div class="bg-card rounded-lg shadow-card p-5 card-transition hover:shadow-hover">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-semibold">车辆状态分布</h3><!-- 图表标题 -->
+			    <!-- 更多操作按钮：浅灰图标，暂时没用待完善 -->
+                            <button class="text-gray-400 hover:text-primary">
+                                <i class="fa fa-ellipsis-v"></i>
+                            </button>
+                        </div>
+			<!-- 图表容器：固定高度64，用于渲染Chart.js图表 -->
+                        <div class="h-64">
+                            <canvas id="vehicleStatusChart"></canvas>
+                        </div>
+                    </div>
+		    <!-- 团队类型占比图表卡片 -->
+                    <div class="bg-card rounded-lg shadow-card p-5 card-transition hover:shadow-hover">
+                        <div class="flex justify-between items-center mb-4">
+                            <h3 class="font-semibold">团队类型占比</h3>
+                            <button class="text-gray-400 hover:text-primary">
+                                <i class="fa fa-ellipsis-v"></i>
+                            </button>
+                        </div>
+                        <div class="h-64">
+                            <canvas id="teamTypeChart"></canvas>
+                        </div>
+                    </div>
+		   <!-- 新增：导游状态分布图表卡片 -->
+ 		   <div class="bg-card rounded-lg shadow-card p-5 card-transition hover:shadow-hover">
+ 		       <div class="flex justify-between items-center mb-4">
+		            <h3 class="font-semibold">导游状态分布</h3>
+ 		           <button class="text-gray-400 hover:text-primary">
+  		              <i class="fa fa-ellipsis-v"></i>
+  		          </button>
+  		      </div>
+  		      <div class="h-64">
+  		          <canvas id="guideStatusChart"></canvas>
+ 		       </div>
+		    </div>
+
+ 		   <!-- 新增：团队状态分布图表卡片 -->
+  		  <div class="bg-card rounded-lg shadow-card p-5 card-transition hover:shadow-hover">
+ 		       <div class="flex justify-between items-center mb-4">
+  		          <h3 class="font-semibold">团队状态分布</h3>
+ 		           <button class="text-gray-400 hover:text-primary">
+ 		               <i class="fa fa-ellipsis-v"></i>
+		            </button>
+ 		       </div>
+ 		       <div class="h-64">
+   		         <canvas id="teamStatusChart"></canvas>
+ 		       </div>
+ 		   </div>
+                </div>
+
+                <!-- 最近调度列表 -->
+                <div class="bg-card rounded-lg shadow-card p-5 card-transition hover:shadow-hover">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-semibold">最近团队调度</h3>
+			<!-- 查看全部链接：主色文字，点击跳转到团队调度面板 -->
+                        <a href="#teams" class="text-primary text-sm font-medium nav-link" data-target="teams">查看全部</a>
+                    </div>
+		    <!-- 表格容器：水平滚动（overflow-x-auto）适配小屏 -->
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+			    <!-- 表格头部：灰色背景，底部边框，小字，浅灰色文字，大写 -->
+                            <thead>
+                                <tr class="border-b border-border text-left text-xs text-gray-500 uppercase">
+                                    <th class="px-4 py-3">团队名称</th>
+                                    <th class="px-4 py-3">类型</th>
+                                    <th class="px-4 py-3">人数</th>
+                                    <th class="px-4 py-3">车辆/导游</th>
+                                    <th class="px-4 py-3">状态</th>
+                                </tr>
+                            </thead>
+			    <!-- 表格主体：行分隔线，动态填充数据 -->
+                            <tbody class="divide-y divide-border" id="recent-teams-table">
+                                <!-- 动态填充 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 车辆管理面板：默认隐藏，点击侧边栏菜单显示 -->
+            <div id="vehicles" class="page-content hidden">
+		<!-- 面板头部：标题+添加按钮，底部间距5 -->
+                <div class="flex justify-between items-center mb-5">
+                    <h3 class="font-semibold text-lg">车辆列表</h3>
+		    <!-- 添加车辆按钮：主按钮样式，点击打开车辆添加模态框 -->
+                    <button class="btn-primary" id="add-vehicle-btn" onclick="openVehicleModal()">
+                        <i class="fa fa-plus"></i>
+                        <span>添加车辆</span>
+                    </button>
+                </div>
+                <!-- 筛选栏：白色背景，圆角，卡片阴影，内边距4，底部间距5 -->
+                <div class="bg-card rounded-lg shadow-card p-4 mb-5">
+		    <!-- 筛选条件网格：响应式布局，移动端1列，小屏2列，大屏4列，间距4 -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+			<!-- 车辆状态筛选 -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">车辆状态</label>
+                            <select class="input-default" id="vehicle-status-filter">
+                                <option value="all">全部状态</option>
+                                <option value="available">可用</option>
+                                <option value="scheduled">已调度</option>
+                                <option value="maintenance">维护中</option>
+                            </select>
+                        </div>
+			<!-- 车辆类型筛选 -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">车辆类型</label>
+                            <select class="input-default" id="vehicle-type-filter">
+                                <option value="all">全部类型</option>
+                                <option value="bus">大巴</option>
+                                <option value="van">商务车</option>
+                                <option value="car">轿车</option>
+                            </select>
+                        </div>
+			<!-- 座位数筛选 -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">座位数</label>
+                            <select class="input-default" id="vehicle-capacity-filter">
+                                <option value="all">全部座位</option>
+                                <option value="small">≤7座</option>
+                                <option value="medium">8-15座</option>
+                                <option value="large">≥16座</option>
+                            </select>
+                        </div>
+			<!-- 搜索框 -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">搜索</label>
+                            <div class="relative">
+                                <input type="text" placeholder="    车牌号/品牌" class="input-default pl-10" id="vehicle-search">
+                                <i class="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 车辆列表表格容器：白色背景，圆角，卡片阴影，溢出隐藏 -->
+                <div class="bg-card rounded-lg shadow-card overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+			     <!-- 表格头部：浅灰背景，底部边框，左对齐，小字，浅灰文字 -->
+                            <thead>
+                                <tr class="bg-gray-50 border-b border-border text-left text-sm text-gray-500">
+                                    <th class="px-6 py-3">车牌号</th>
+                                    <th class="px-6 py-3">品牌/型号</th>
+                                    <th class="px-6 py-3">座位数</th>
+                                    <th class="px-6 py-3">年份</th>
+                                    <th class="px-6 py-3">类型</th>
+                                    <th class="px-6 py-3">状态</th>
+                                    <th class="px-6 py-3">备注</th>
+                                    <th class="px-6 py-3 text-right">操作</th>
+                                </tr>
+                            </thead>
+			    <!-- 表格主体：行分隔线，动态填充车辆数据 -->
+                            <tbody class="divide-y divide-border" id="vehicles-table">
+                                <!-- 动态填充 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 导游管理面板 -->
+            <div id="guides" class="page-content hidden">
+		<!-- 面板头部：标题+添加按钮 -->
+                <div class="flex justify-between items-center mb-5">
+                    <h3 class="font-semibold text-lg">导游人才库</h3>
+		    <!-- 添加导游按钮：点击打开导游添加模态框 -->
+                    <button class="btn-primary" id="add-guide-btn" onclick="openGuideModal()">
+                        <i class="fa fa-plus"></i>
+                        <span>添加导游</span>
+                    </button>
+                </div>
+                <!-- 筛选栏 -->
+                <div class="bg-card rounded-lg shadow-card p-4 mb-5">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">导游状态</label>
+                            <select class="input-default" id="guide-status-filter">
+                                <option value="all">全部状态</option>
+                                <option value="available">可用</option>
+                                <option value="scheduled">已调度</option>
+                                <option value="off">休息</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">专长领域</label>
+                            <select class="input-default" id="guide-specialty-filter">
+                                <option value="all">全部专长</option>
+                                <option value="history">历史文化</option>
+                                <option value="nature">自然风光</option>
+                                <option value="shopping">购物指导</option>
+                                <option value="food">美食推荐</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">语言能力</label>
+                            <select class="input-default" id="guide-language-filter">
+                                <option value="all">全部语言</option>
+                                <option value="chinese">中文</option>
+                                <option value="english">英语</option>
+                                <option value="japanese">日语</option>
+                                <option value="korean">韩语</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">搜索</label>
+                            <div class="relative">
+                                <input type="text" placeholder="    姓名/专长" class="input-default pl-10" id="guide-search">
+                                <i class="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 导游卡片列表：响应式网格，移动端1列，小屏2列，大屏3列，超大屏4列 -->
+                <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4" id="guides-container">
+                    <!-- 动态填充导游卡片 -->
+                </div>
+            </div>
+
+            <!-- 团队调度面板 -->
+            <div id="teams" class="page-content hidden">
+		<!-- 面板头部：标题+创建按钮 -->
+                <div class="flex justify-between items-center mb-5">
+                    <h3 class="font-semibold text-lg">团队列表</h3>
+		    <!-- 创建团队按钮：点击打开团队创建模态框 -->
+                    <button class="btn-primary" id="add-team-btn" onclick="openTeamModal()">
+                        <i class="fa fa-plus"></i>
+                        <span>创建团队</span>
+                    </button>
+                </div>
+                <!-- 团队筛选栏 -->
+                <div class="bg-card rounded-lg shadow-card p-4 mb-5">
+                    <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                      <div>
+                          <label class="block text-sm font-medium text-gray-500 mb-1">团队状态</label>
+                            <select class="input-default" id="team-status-filter">
+                                <option value="all">全部状态</option>
+                                <option value="pending">待确认</option>
+                                <option value="confirmed">已确认</option>
+                                <option value="completed">已完成</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">团队类型</label>
+                            <select class="input-default" id="team-type-filter">
+                                <option value="all">全部类型</option>
+                                <option value="business">公务团</option>
+                                <option value="island">环岛团</option>
+                                <option value="reception">接待团</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">人数范围</label>
+                            <select class="input-default" id="team-size-filter">
+                                <option value="all">全部人数</option>
+                                <option value="small">≤10人</option>
+                                <option value="medium">11-30人</option>
+                                <option value="large">≥31人</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">搜索</label>
+                            <div class="relative">
+                                <input type="text" placeholder="    团队名称/导游" class="input-default pl-10" id="team-search">
+                                <i class="fa fa-search absolute left-3 top-1/2 -translate-y-1/2 text-gray-400"></i>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <!-- 团队列表表格容器 -->
+                <div class="bg-card rounded-lg shadow-card overflow-hidden">
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full">
+			    <!-- 表头 -->
+                            <thead>
+                                <tr class="bg-gray-50 border-b border-border text-left text-sm text-gray-500">
+                                    <th class="px-6 py-3">团队名称</th>
+                                    <th class="px-6 py-3">类型</th>
+                                    <th class="px-6 py-3">人数</th>
+                                    <th class="px-6 py-3">时间范围</th>
+                                    <th class="px-6 py-3">分配车辆</th>
+                                    <th class="px-6 py-3">分配导游</th>
+                                    <th class="px-6 py-3">状态</th>
+                                    <th class="px-6 py-3 text-right">操作</th>
+                                </tr>
+                            </thead>
+			    <!-- 表格主体：动态填充团队数据 -->
+                            <tbody class="divide-y divide-border" id="teams-table">
+                                <!-- 动态填充 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+	    <!-- 月排班表面板 -->
+         <div id="schedule" class="page-content hidden">
+	    <!-- 导游月度排班表卡片 -->
+                <div class="bg-card rounded-lg shadow-card p-5 card-transition hover:shadow-hover">
+                    <div class="flex justify-between items-center mb-4">
+                        <h3 class="font-semibold">导游月度排班表</h3>
+			<!-- 月份切换按钮组：左/右箭头切换上月/下月 -->
+                        <div class="flex gap-2">
+                            <button class="btn-secondary text-xs px-2 py-1" id="prev-month">
+                                <i class="fa fa-chevron-left"></i> 上月
+                            </button>
+			    <!-- 当前月份显示 -->
+                            <span class="text-sm font-medium" id="current-month-display">2026年02月</span>
+                            <button class="btn-secondary text-xs px-2 py-1" id="next-month">
+                                下月 <i class="fa fa-chevron-right"></i>
+                            </button>
+                        </div>
+                    </div>
+		    <!-- 排班表容器：水平滚动 -->
+                    <div class="overflow-x-auto">
+                        <table class="min-w-full" id="guide-schedule-table">
+                            <thead>
+                                <tr class="border-b border-border text-left text-xs text-gray-500 uppercase">
+				    <!-- 首列固定：导游/日期列 -->
+                                    <th class="px-3 py-2 w-32 bg-gray-50 sticky left-0">导游/日期</th>
+                                    <!-- 日期列会动态生成（根据当前月份的天数）-->
+                                </tr>
+                            </thead>
+			    <!-- 排班表主体：动态填充每个导游的每日排班数据 -->
+                            <tbody class="divide-y divide-border" id="schedule-tbody">
+                                <!-- 动态填充导游排班数据 -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+
+            <!-- 数据备份面板 -->
+      	    <div id="backup" class="page-content hidden">
+		<!-- 面板头部：标题+备份/恢复按钮 -->
+                <div class="flex justify-between items-center mb-5">
+                    <h3 class="font-semibold text-lg">数据备份与恢复</h3>
+                    <div class="flex gap-3">
+			<!-- 创建备份按钮：主按钮样式 -->
+                        <button class="btn-primary" id="btn-create-backup">
+                            <i class="fa fa-save"></i>
+                            <span>创建备份</span>
+                        </button>
+                        <input type="file" id="backup-import-file" class="hidden" accept=".json">
+                        <button class="btn-secondary" onclick="document.getElementById('backup-import-file').click()">
+                            <i class="fa fa-upload"></i>
+                            <span>恢复备份</span>
+                        </button>
+                    </div>
+                </div>
+                          	
+                <!-- 备份记录列表 -->
+                <div class="bg-card rounded-lg shadow-card p-5 mb-6">
+                    <h4 class="font-semibold mb-4">备份记录</h4>
+                    <div id="backup-list" class="space-y-3">
+                        <!-- 动态填充备份记录 -->
+                    </div>
+                </div>
+
+                <!-- 导入导出说明 -->
+                <div class="bg-card rounded-lg shadow-card p-5">
+                    <h4 class="font-semibold mb-3">数据导入导出说明</h4>
+                    <ul class="text-sm text-gray-600 space-y-2">                     
+                        <li class="flex items-start gap-2">
+                            <i class="fa fa-info-circle text-primary mt-1"></i>
+                            <span>JSON备份包含所有数据，建议定期创建备份以防数据丢失</span>
+                        </li>
+                        <li class="flex items-start gap-2">
+                            <i class="fa fa-warning text-warning mt-1"></i>
+                            <span>恢复备份会覆盖当前所有数据，请谨慎操作</span>
+                        </li>
+                    </ul>
+                </div>
+            </div>
+
+	    <!-- 版本说明面板 -->
+      	    <div id="version" class="page-content hidden">
+		     <!-- 面板头部：标题+导出日志按钮 -->
+         	     <div class="flex justify-between items-center mb-5">
+          	        <h3 class="font-semibold text-lg">版本说明</h3>
+            	      <!-- 可按需添加「导出版本日志」等按钮 -->
+            	      <button class="btn-secondary" id="export-version-log">
+             	         <i class="fa fa-download"></i>
+             	         <span>导出日志</span>
+          	        </button>
+       	       </div>
+    
+    <!-- 版本说明内容卡片 -->
+    <div class="bg-card rounded-lg shadow-card p-5 card-transition hover:shadow-hover">
+        <div class="space-y-6">
+            <!-- 当前版本信息 -->
+            <div class="border-b border-border pb-4">
+                <h4 class="font-semibold text-primary text-lg flex items-center gap-2">
+                    <i class="fa fa-tag"></i>
+                    遨行管理平台 v2.3
+                </h4>
+                <p class="text-sm text-gray-500 mt-1">更新时间：2026-02-22 | 状态：正式版 | 开发者：扶苏</p>
+            </div>
+
+            <!-- 功能更新记录 -->
+            <div>
+                <h5 class="font-medium text-dark flex items-center gap-2 mb-2">
+                    <i class="fa fa-plus-circle text-success"></i>
+                    新增功能
+                </h5>
+                <ul class="list-disc list-inside text-sm text-gray-600 space-y-1 pl-4">
+                    <li>新增导游月度排班表功能，车辆维修记录功能优化</li>		    
+                    <li>新增版本说明模块，支持查看系统迭代记录</li>
+		    <li>新增备注编辑模态框，支持快速修改车辆/导游备注信息</li>
+		    <li>新增动态导游状态分布、团队状态分布图</li>
+                    <li>完善数据备份/恢复的容错处理，新增备份记录时间戳</li>                    
+                </ul>
+            </div>
+
+            <!-- 优化修复记录 -->
+            <div>
+                <h5 class="font-medium text-dark flex items-center gap-2 mb-2">
+                    <i class="fa fa-wrench text-warning"></i>
+                    优化与修复
+                </h5>
+                <ul class="list-disc list-inside text-sm text-gray-600 space-y-1 pl-4">
+                    <li>修复小屏设备下导游卡片排版错乱问题</li>
+                    <li>优化图表渲染性能，解决数据刷新时的卡顿问题</li>
+                    <li>修复团队调度筛选器默认值不生效的BUG</li>
+                    <li>优化本地存储数据加载逻辑，提升首次加载速度</li>
+                    <li>修复备注输入框回车提交的兼容性问题</li>
+                </ul>
+            </div>
+
+            <!-- 历史版本记录 -->
+            <div>
+                <h5 class="font-medium text-dark flex items-center gap-2 mb-2">
+                    <i class="fa fa-history text-info"></i>
+                    历史版本
+                </h5>
+                <div class="space-y-3 pl-4">
+                    <div class="p-2 bg-gray-50 rounded-md">
+                        <p class="text-sm font-medium">v2.2（2026-02-15）</p>
+                        <p class="text-xs text-gray-500">新增版本说明板块、车辆维修信息录入、本地存储持久化功能。</p>
+                    </div>
+                    <div class="p-2 bg-gray-50 rounded-md">
+                        <p class="text-sm font-medium">v2.1（2026-02-10）</p>
+                        <p class="text-xs text-gray-500">清理冗余代码与无效逻辑，精简后代码规模为 2555 行（约 12 万字符），优化系统运行效率。</p>
+                    </div>
+		<div class="p-2 bg-gray-50 rounded-md">
+                        <p class="text-sm font-medium">v2.0（2026-01-15）</p>
+                        <p class="text-xs text-gray-500">正式发布核心功能版本，完整实现车辆、导游、团队三大核心模块的全流程管理，满足业务核心诉求。</p>
+                    </div>
+		<div class="p-2 bg-gray-50 rounded-md">
+                        <p class="text-sm font-medium">v1.6（2025-12-20）</p>
+                        <p class="text-xs text-gray-500">新增团队多维度筛选功能，新增数据备份功能，，强化数据安全保障完善导游与车辆信息。</p>
+                    </div>
+		<div class="p-2 bg-gray-50 rounded-md">
+                        <p class="text-sm font-medium">v1.0（2025-11-25）</p>
+                        <p class="text-xs text-gray-500">基础版本，完成系统基本界面框架搭建，实现核心模块的基础交互逻辑。</p>
+                    </div>
+
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+        </main>
+    </div>
+
+
+    <!-- 七大面板内容结束--通用模态框（用于添加/编辑车辆、导游、团队等操作，默认隐藏） -->
+    <div id="modal" class="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+	<!-- 模态框内容：白色背景，圆角，阴影，最大宽度2xl，最大高度90vh，垂直滚动，左右内边距4 -->
+        <div class="bg-card rounded-lg shadow-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto mx-4">
+	    <!-- 模态框头部：标题+关闭按钮，底部边框分隔 -->
+            <div class="p-5 border-b border-border flex justify-between items-center">
+                <h3 class="font-semibold text-lg" id="modal-title">操作面板</h3>
+		<!-- 关闭按钮：点击关闭模态框 -->
+                <button id="close-modal" class="text-gray-400 hover:text-dark transition-colors" onclick="closeModal()">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+	    <!-- 模态框内容区域：动态填充表单 -->
+            <div class="p-5" id="modal-content">
+                <!-- 动态填充表单 -->
+            </div>
+        </div>
+    </div>
+
+<!-- 备注编辑模态框：专门用于快速编辑备注 -->
+    <div id="remark-modal" class="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center hidden">
+        <div class="bg-card rounded-lg shadow-lg w-full max-w-md max-h-[90vh] overflow-y-auto mx-4">
+            <div class="p-5 border-b border-border flex justify-between items-center">
+                <h3 class="font-semibold text-lg" id="remark-modal-title">编辑备注</h3>
+                <button id="close-remark-modal" class="text-gray-400 hover:text-dark transition-colors">
+                    <i class="fa fa-times"></i>
+                </button>
+            </div>
+            <div class="p-5">
+                <input type="hidden" id="remark-item-id">
+                <input type="hidden" id="remark-item-type">
+                <label class="block text-sm font-medium text-gray-500 mb-2">备注内容</label>
+                <textarea id="remark-content" class="input-default h-32 resize-none" placeholder="请输入备注信息..."></textarea>
+                <div class="mt-4 flex justify-end">
+                    <button class="btn-secondary mr-2" id="cancel-remark-btn" onclick="closeRemarkModal()">取消</button>
+                    <button class="btn-primary" id="save-remark-btn" onclick="saveRemark()">保存备注</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+
+
+    <script>
+        // ===================== 核心配置：本地存储键名定义 =====================
+	// 主数据存储的键名（本地存储中标识车辆/导游/团队数据）
+        const STORAGE_KEY = 'vehicle_manage_system_data';
+	// 备份数据存储的键名（预留备份功能）
+        const BACKUP_STORAGE_KEY = 'vehicle_manage_backups';
+
+	// ===================== 数据持久化核心函数 =====================
+        /**
+         * 保存主数据到浏览器本地存储
+         * 作用：将车辆、导游、团队数据存入localStorage，实现页面刷新后数据不丢失
+         * 同时更新仪表盘统计、刷新图表（如果有）
+         */
+        function saveDataToLocal() {
+	    // 整合需要保存的所有数据
+            const data = { vehicles, guides, teams };
+	    // 转换为JSON字符串存入本地存储（localStorage只能存字符串）
+            localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+	    // 更新仪表盘统计数据
+            updateDashboardStats();
+            initCharts(); // 刷新图表
+        }
+
+        /**
+         * 从本地存储加载主数据
+         * 作用：页面初始化时，读取之前保存的数据，没有则返回null
+         * @returns {Object|null} 包含vehicles/guides/teams的对象，或null
+         */
+        function loadDataFromLocal() {
+	    // 从本地存储读取数据
+            const rawData = localStorage.getItem(STORAGE_KEY);
+	    // 有数据则转换为JS对象，无则返回null
+            return rawData ? JSON.parse(rawData) : null;
+        }
+
+         /**
+         * 生成唯一ID（按前缀+3位数字）
+         * 作用：为新增的车辆(v)/导游(g)/团队(t)生成不重复的ID，比如v001、g002
+         * @param {string} prefix 前缀：v(车辆)/g(导游)/t(团队)
+         * @returns {string} 生成的唯一ID
+         */
+        function generateId(prefix) {
+	    // 根据前缀选择对应的数据列表
+            const maxId = Math.max(...(prefix === 'v' ? vehicles : prefix === 'g' ? guides : teams).map(item => {
+		// 截取ID前缀后的数字部分，转成数字（比如v001→1）
+                return parseInt(item.id.slice(1)) || 0;
+            }), 0);
+	    // 新ID = 前缀 + （最大数字+1）补零到3位（比如9+1=10→010，最终v010）
+            return `${prefix}${String(maxId + 1).padStart(3, '0')}`;
+        }
+
+        // ===================== 初始数据定义（默认数据） =====================
+	/**
+         * 车辆默认数据列表
+         * 每个车辆对象的属性说明：
+         * id: 唯一标识, brand: 品牌, model: 型号, capacity: 座位数, year: 购买年份
+         * plateNumber: 车牌号, status: 状态(available=可用/scheduled=已调度/maintenance=维护中)
+         * type: 类型(van=商务车/bus=大巴/car=轿车), maintenanceRecords: 维修记录, remark: 备注
+         */
+        const defaultVehicles = [
+            { id: 'v001', brand: '奔驰', model: '长vclass', capacity: 8, year: 2023, plateNumber: 'Y666GTE', status: 'available', type: 'van', maintenanceRecords: [''], remark: '商务接待专用' },
+            { id: 'v002', brand: '奔驰', model: '加长vclass', capacity: 7, year: 2016, plateNumber: 'Y5GTE', status: 'scheduled', type: 'van', maintenanceRecords: ['第一条', '第二条', '第三条'], remark: '常规使用' },
+            { id: 'v003', brand: '奔驰', model: '加长vclass', capacity: 8, year: 2015, plateNumber: 'Y9GTE', status: 'scheduled', type: 'van', maintenanceRecords: [''], remark: '没有雨伞' },
+            { id: 'v004', brand: '奔驰', model: '加长vclass', capacity: 8, year: 2015, plateNumber: 'Y12GTE', status: 'maintenance', type: 'van', maintenanceRecords: [''], remark: '轮胎需要定时充气' },
+            { id: 'v005', brand: '奔驰', model: '加长vclass', capacity: 8, year: 2017, plateNumber: 'Y16GTE', status: 'available', type: 'van', maintenanceRecords: [''], remark: '大容量后备箱' },
+            { id: 'v006', brand: '奔驰', model: '加长vclass', capacity: 8, year: 2017, plateNumber: 'Y18GTE', status: 'available', type: 'van', maintenanceRecords: [''], remark: '备注可见、维修记录不可见' },
+            { id: 'v007', brand: '奔驰', model: '加长vclass', capacity: 7, year: 2018, plateNumber: 'Y19GTE', status: 'scheduled', type: 'van', maintenanceRecords: [''], remark: '' },
+            { id: 'v008', brand: '奔驰', model: '加长vclass', capacity: 8, year: 2017, plateNumber: 'Y20GTE', status: 'available', type: 'van', maintenanceRecords: [''], remark: '' },
+            { id: 'v009', brand: '奔驰', model: '加长vclass', capacity: 8, year: 2018, plateNumber: 'Y21GTE', status: 'scheduled', type: 'van', maintenanceRecords: [''], remark: '' },
+            { id: 'v010', brand: '奔驰', model: '加长vclass', capacity: 7, year: 2016, plateNumber: 'LJ66VUT', status: 'available', type: 'van', maintenanceRecords: [''], remark: '' },
+            { id: 'v011', brand: '奔驰', model: '加长vito', capacity: 9, year: 2016, plateNumber: 'Y10GTE', status: 'available', type: 'van', maintenanceRecords: [''], remark: '' },
+            { id: 'v012', brand: '奔驰', model: '加长vito', capacity: 9, year: 2018, plateNumber: 'K018HJY', status: 'available', type: 'van', maintenanceRecords: [''], remark: '' },
+            { id: 'v013', brand: '奔驰', model: '加长vito', capacity: 9, year: 2019, plateNumber: 'KJ19GHK', status: 'available', type: 'van', maintenanceRecords: [''], remark: '' }
+        ];
+
+	/**
+         * 导游默认数据列表
+         * 每个导游对象的属性说明：
+         * id: 唯一标识, name: 姓名, age: 年龄, experience: 从业年限, languages: 掌握语言
+         * specialties: 专长, rating: 评分, status: 状态(available=可用/scheduled=已调度), certifications: 电话号 remark: 备注
+         */
+        const defaultGuides = [
+            { id: 'g001', name: '李鹏', age: 44, experience: 10, languages: ['chinese', 'english'], specialties: ['history', 'culture'], rating: 4.9, status: 'available', certifications: ['07428622523'], remark: '擅长高端商务接待' },
+            { id: 'g002', name: '文兆立', age: 28, experience: 10, languages: ['chinese', 'english'], specialties: ['shopping', 'food'], rating: 4.9, status: 'scheduled', certifications: ['07594716121'], remark: '' },
+            { id: 'g003', name: '洪京明', age: 49, experience: 10, languages: ['chinese', 'english'], specialties: ['history', 'nature'], rating: 4.9, status: 'available', certifications: ['07795280244'], remark: '资深历史导游' },
+            { id: 'g004', name: '杜权丞', age: 39, experience: 10, languages: ['chinese', 'english'], specialties: ['nightlife', 'entertainment'], rating: 4.9, status: 'available', certifications: [''], remark: '江苏徐州人，南安普顿毕业' },
+            { id: 'g005', name: '盛巍', age: 29, experience: 10, languages: ['chinese', 'english'], specialties: ['food', 'culture'], rating: 4.9, status: 'available', certifications: ['07852228555'], remark: '' },
+            { id: 'g006', name: '俞耀东', age: 38, experience: 10, languages: ['chinese', 'english'], specialties: ['history', 'business'], rating: 4.9, status: 'scheduled', certifications: ['07449588148'], remark: '喜欢健身' },
+            { id: 'g007', name: '马溪泉', age: 33, experience: 8, languages: ['chinese', 'english'], specialties: ['nature', 'adventure'], rating: 4.9, status: 'available', certifications: ['07515989888'], remark: '' },
+            { id: 'g008', name: '陈一郎', age: 30, experience: 5, languages: ['chinese', 'english'], specialties: ['shopping', 'fashion'], rating: 4.9, status: 'available', certifications: ['07515989888'], remark: '住曼城' },
+            { id: 'g009', name: '杨炎炎', age: 37, experience: 14, languages: ['chinese', 'english', 'french'], specialties: ['history', 'art'], rating: 4.9, status: 'available', certifications: ['07492507800'], remark: '珊珊，云南人' },
+            { id: 'g010', name: '华嘉', age: 37, experience: 4, languages: ['chinese', 'english'], specialties: ['food', 'nightlife'], rating: 4.9, status: 'available', certifications: ['07780798888'], remark: '北京人' },
+            { id: 'g011', name: '扶海滨', age: 34, experience: 11, languages: ['chinese', 'english'], specialties: ['photography', 'architecture'], rating: 4.9, status: 'scheduled', certifications: ['07541708482'], remark: '' },
+            { id: 'g012', name: '粱志超', age: 32, experience: 9, languages: ['chinese', 'english'], specialties: ['culture', 'shopping'], rating: 4.9, status: 'available', certifications: [''], remark: '' },
+            { id: 'g013', name: '倪磊洛', age: 37, experience: 6, languages: ['chinese', 'english'], specialties: ['nature', 'culture'], rating: 4.9, status: 'available', certifications: [''], remark: '河南人，之前在西门子' },
+            { id: 'g014', name: '阿仔', age: 25, experience: 10, languages: ['chinese', 'english'], specialties: ['history', 'photography'], rating: 4.9, status: 'available', certifications: [''], remark: '四川人，西敏大学2023' },
+ 	    { id: 'g015', name: '李卫坤', age: 56, experience: 10, languages: ['chinese', 'english'], specialties: ['history', 'culture'], rating: 4.9, status: 'available', certifications: [''], remark: '辽宁大连人，住赫尔' },
+        ];
+
+	/**
+         * 团队默认数据列表
+         * 每个团队对象的属性说明：
+         * id: 唯一标识, name: 团队名称, type: 类型(business=公务团/island=环岛团/reception=接待团)
+         * size: 人数, startDate: 开始日期, endDate: 结束日期, vehicleId: 关联车辆ID
+         * guideId: 关联导游ID, status: 状态(pending=待确认/confirmed=已确认/completed=已完成)
+         */
+        const defaultTeams = [
+            { id: 't001', name: '华为商务考察团', type: 'business', size: 20, startDate: '2026-01-15', endDate: '2026-01-20', vehicleId: 'v002', guideId: 'g006', status: 'confirmed' },
+            { id: 't002', name: '北京游客环岛团', type: 'island', size: 4, startDate: '2026-01-18', endDate: '2026-01-22', vehicleId: 'v007', guideId: 'g002', status: 'confirmed' },
+            { id: 't003', name: '政府接待团', type: 'reception', size: 6, startDate: '2026-01-20', endDate: '2026-01-23', vehicleId: 'v011', guideId: 'g011', status: 'pending' },
+            { id: 't004', name: '作家文化交流团', type: 'business', size: 5, startDate: '2026-01-25', endDate: '2026-01-30', vehicleId: 'v001', guideId: 'g001', status: 'pending' },
+            { id: 't005', name: '携程半自助', type: 'island', size: 6, startDate: '2026-01-28', endDate: '2026-02-02', vehicleId: 'v004', guideId: 'g005', status: 'completed' }
+        ];
+
+	// ===================== 全局数据初始化/全局变量定义区 =====================
+        // 从本地存储加载数据，如果没有则使用默认数据
+        const localData = loadDataFromLocal();
+	// 车辆列表（全局变量）：优先用本地存储的数据，无则用默认数据
+        let vehicles = localData?.vehicles || defaultVehicles;
+	// 导游列表（全局变量）：优先用本地存储的数据，无则用默认数据
+        let guides = localData?.guides || defaultGuides;
+	// 团队列表（全局变量）：优先用本地存储的数据，无则用默认数据
+        let teams = localData?.teams || defaultTeams;
+        // 编辑模式标识（全局变量）：true=编辑已有数据，false=新增数据
+        let editMode = false;
+	// 当前编辑的ID（全局变量）：记录正在编辑的车辆/导游/团队ID
+        let currentEditId = '';
+
+        // ===================== 基础工具函数 =====================
+	/**
+         * 根据ID查找车辆
+         * 作用：通过车辆ID快速找到对应的车辆对象
+         * @param {string} id 车辆ID
+         * @returns {Object|undefined} 车辆对象，找不到则返回undefined
+         */
+        function getVehicleById(id) {
+            return vehicles.find(vehicle => vehicle.id === id);
+        }
+	/**
+         * 根据ID查找导游 
+         */
+        function getGuideById(id) {
+            return guides.find(guide => guide.id === id);
+        }
+
+ 	/**
+         * 生成状态徽章（带样式的文字标签）
+         * 作用：将状态值（如available）转换为带颜色的可视化标签，提升页面可读性
+         * @param {string} status 状态值
+         * @returns {string} HTML字符串（带样式的span标签）
+         */
+        function getStatusBadge(status) {
+            switch (status) {
+                case 'available': return '<span class="badge bg-success/10 text-success">可用</span>';
+                case 'scheduled': return '<span class="badge bg-warning/10 text-warning">已调度</span>';
+                case 'maintenance': case 'off': return '<span class="badge bg-danger/10 text-danger">不可用</span>';
+                case 'pending': return '<span class="badge bg-info/10 text-info">待确认</span>';
+                case 'confirmed': return '<span class="badge bg-success/10 text-success">已确认</span>';
+		case 'completed': return '<span class="badge bg-primary/10 text-primary">已完成</span>'; // 新增已完成状态
+                default: return '<span class="badge bg-gray-100 text-gray-500">未知</span>';
+            }
+        }
+
+	/**
+         * 转换团队类型为中文
+         * 作用：将英文类型（如business）转为中文（公务团），方便杜老板查看
+         * @param {string} type 团队类型（英文）
+         * @returns {string} 中文类型名称
+         */
+        function getTeamTypeText(type) {
+            return { business: '公务团', island: '环岛团', reception: '接待团' }[type] || '未知';
+        }
+
+	/**
+         * 转换车辆类型为中文         
+         */
+        function getVehicleTypeText(type) {
+            return { bus: '大巴', van: '商务车', car: '轿车' }[type] || '未知';
+        }
+
+	/**
+         * 格式化日期为YYYY-MM-DD格式
+         * 作用：统一日期显示格式，避免浏览器默认日期格式不一致
+         * @param {string} dateString 日期字符串
+         * @returns {string} 格式化后的日期（YYYY-MM-DD）
+         */
+        function formatDate(dateString) {
+            const date = new Date(dateString);
+            return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+        }
+
+	/**
+         * 更新仪表盘统计数据
+         * 作用：计算并更新页面上的核心统计指标（总车辆数、总导游数、总团队数、资源可用率）
+         * 同时刷新所有列表的显示
+         */
+        function updateDashboardStats() {
+	    // 更新总车辆数
+            document.getElementById('total-vehicles').textContent = vehicles.length;
+	    // 更新总导游数
+            document.getElementById('total-guides').textContent = guides.length;
+	    // 更新总团队数
+            document.getElementById('total-teams').textContent = teams.length;
+            
+            // 计算资源可用率 （可用车辆+可用导游 / 总车辆+总导游）
+            const availableVehicles = vehicles.filter(v => v.status === 'available').length; // 可用车辆数
+            const availableGuides = guides.filter(g => g.status === 'available').length;    // 可用导游数
+            const totalResources = vehicles.length + guides.length;				       // 总资源数
+            const availableResources = availableVehicles + availableGuides;		       // 可用资源数
+	    // 计算可用率（避免除以0），四舍五入到整数
+            const resourceRate = totalResources > 0 ? Math.round((availableResources / totalResources) * 100) : 0;
+	    // 更新可用率显示
+            document.getElementById('resource-rate').textContent = `${resourceRate}%`;
+            
+            // 更新所有列表
+            renderRecentTeams(); // 刷新最近团队列表
+            renderVehiclesTable(); // 刷新车辆列表
+            renderGuidesList();      // 刷新导游列表
+            renderTeamsTable();   // 刷新团队列表
+            renderBackupList();     // 刷新备份列表（如果有）
+        }
+
+
+       
+        // ===================== 页面渲染函数 （负责把数据显示到页面）=====================
+        /**
+         * 渲染最近团队列表（显示前5条）
+         * 作用：在仪表盘显示最近的5个团队信息，方便快速查看
+         */
+        function renderRecentTeams() {
+	    // 获取团队列表的表格体元素
+            const tableBody = document.getElementById('recent-teams-table');
+	    // 清空原有内容（避免重复渲染）
+            tableBody.innerHTML = '';
+            
+            const recentTeams = teams.slice(0, 5); // 取前5条
+	    // 遍历每条数据，生成表格行
+            recentTeams.forEach(team => {
+		// 根据团队关联的ID，找到对应的车辆和导游
+                const vehicle = getVehicleById(team.vehicleId);
+                const guide = getGuideById(team.guideId);
+                
+		// 创建表格行元素
+                const row = document.createElement('tr');
+                row.className = 'hover:bg-gray-50';		// 鼠标悬浮样式
+		// 设置行的HTML内容（显示团队名称、类型、人数、车辆/导游、状态）
+                row.innerHTML = `
+                    <td class="px-4 py-3">${team.name}</td>
+                    <td class="px-4 py-3">${getTeamTypeText(team.type)}</td>
+                    <td class="px-4 py-3">${team.size}人</td>
+                    <td class="px-4 py-3">${vehicle?.plateNumber || '未分配'}/${guide?.name || '未分配'}</td>
+                    <td class="px-4 py-3">${getStatusBadge(team.status)}</td>
+                `;
+		// 将行添加到表格体
+                tableBody.appendChild(row);
+            });
+        }
+
+   
+        
+        /**
+         * 渲染导游列表（卡片形式）
+         * 作用：以卡片样式显示导游信息，支持筛选（状态、专长、语言、关键词）
+         */
+        function renderGuidesList() {
+	     // 获取导游列表的容器元素
+            const container = document.getElementById('guides-container');
+	    // 清空原有内容
+            container.innerHTML = '';
+            
+            // 筛选逻辑 - 获取筛选条件（从页面的筛选控件中读取）
+            const statusFilter = document.getElementById('guide-status-filter').value; 		// 状态筛选（可用/已调度）
+            const specialtyFilter = document.getElementById('guide-specialty-filter').value;	// 专长筛选（历史/美食等）
+            const languageFilter = document.getElementById('guide-language-filter').value;	// 语言筛选（中文/英语等）
+            const searchTerm = document.getElementById('guide-search')?.value.toLowerCase() || ''; // 关键词搜索
+            
+	    // 初始筛选：先复制全部导游数据，避免修改原数组
+            let filteredGuides = guides;
+            
+	    // 应用状态筛选（如果不是"全部"）
+            if (statusFilter !== 'all') filteredGuides = filteredGuides.filter(g => g.status === statusFilter);
+	    // 应用专长筛选（如果不是"全部"）
+            if (specialtyFilter !== 'all') filteredGuides = filteredGuides.filter(g => g.specialties.includes(specialtyFilter));
+	    // 应用语言筛选（如果不是"全部"）
+            if (languageFilter !== 'all') filteredGuides = filteredGuides.filter(g => g.languages.includes(languageFilter));
+	    // 应用关键词搜索（姓名或专长包含关键词）
+            if (searchTerm) {
+                filteredGuides = filteredGuides.filter(g => 
+                    g.name.toLowerCase().includes(searchTerm) || 
+                    g.specialties.some(s => s.includes(searchTerm))
+                );
+            }
+            
+            // 渲染卡片-- 遍历筛选后的导游，生成卡片
+            filteredGuides.forEach(guide => {
+		// 创建卡片元素
+                const card = document.createElement('div');
+		// 设置卡片样式
+                card.className = 'bg-card rounded-lg shadow-card p-5 card-transition hover:shadow-hover';
+		// 设置卡片内容（显示姓名、年龄、经验、语言、专长、评分、备注，以及编辑/删除按钮）
+                card.innerHTML = `
+                    <div class="flex justify-between items-start mb-4">
+                        <div class="flex items-center gap-3">
+                            <div class="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary">
+                                <span class="font-medium">${guide.name.charAt(0)}</span>
+                            </div>
+                            <div>
+                                <h4 class="font-semibold">${guide.name}</h4>
+                                <p class="text-xs text-gray-500">${guide.age}岁 · ${guide.experience}年经验</p>
+                            </div>
+                        </div>
+                        ${getStatusBadge(guide.status)}
+                    </div>
+                    <div class="space-y-2 mb-4">
+                        <div class="flex items-center gap-2 text-sm">
+                            <i class="fa fa-language text-info text-xs"></i>
+                            <span>${guide.languages.map(l => ({
+                                chinese: '中文', english: '英语', japanese: '日语', 
+                                korean: '韩语', french: '法语'
+                            }[l] || l)).join('、')}</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-sm">
+                            <i class="fa fa-star text-warning text-xs"></i>
+                            <span>专长：${guide.specialties.map(s => ({
+                                history: '历史文化', nature: '自然风光', 
+                                shopping: '购物指导', food: '美食推荐',
+                                business: '商务接待', art: '艺术鉴赏',
+                                entertainment: '娱乐休闲', technology: '科技讲解'
+                            }[s] || s)).join('、')}</span>
+                        </div>
+                        <div class="flex items-center gap-2 text-sm">
+                            <i class="fa fa-certificate text-primary text-xs"></i>
+                            <span>评分：${guide.rating}/5</span>
+                        </div>
+                        <div class="text-sm mt-2">
+                            <label class="text-gray-500 text-xs">备注：</label>
+                            <p class="text-sm">${guide.remark || '无备注'}</p>
+                        </div>
+                    </div>
+                    <div class="flex justify-end gap-2 mt-4">
+                        <button class="btn-blue text-sm px-3 py-1 bg-blue-500 hover:bg-blue-600 text-white rounded" onclick="openGuideModal('${guide.id}')">
+                            <i class="fa fa-edit text-xs"></i> 编辑
+                        </button>
+                        <button class="btn-danger text-sm px-3 py-1" onclick="deleteGuide('${guide.id}')">
+                            <i class="fa fa-trash text-xs"></i> 删除
+                        </button>
+                    </div>
+                `;
+		// 将卡片添加到容器
+                container.appendChild(card);
+            });
+        }
+
+        /**
+         * 渲染团队列表（表格形式）
+         * 作用：以表格样式显示团队信息，支持多条件筛选（状态、类型、人数、关键词）
+         */
+            function renderTeamsTable() {
+		// 获取团队列表的表格体元素
+                const tableBody = document.getElementById('teams-table');
+		// 清空原有内容
+                tableBody.innerHTML = '';
+
+                // 获取筛选条件（从页面筛选控件读取）
+                const statusFilter = document.getElementById('team-status-filter').value; 	// 状态筛选（待确认/已确认/已完成）
+                const typeFilter = document.getElementById('team-type-filter').value;	// 类型筛选（公务团/环岛团/接待团）
+                const sizeFilter = document.getElementById('team-size-filter').value;		// 人数筛选（≤10人/11-30人/≥31人）
+                const searchTerm = document.getElementById('team-search')?.value.toLowerCase().trim() || ''; // 关键词（团队名称/导游）            
+    
+                let filteredTeams = [...teams]; // 深拷贝原数组，避免筛选修改原数据
+    
+                // 1. 团队状态筛选：pending(待确认)/confirmed(已确认)/completed(已完成)
+                if (statusFilter !== 'all') {
+                    filteredTeams = filteredTeams.filter(team => team.status === statusFilter);
+                }
+
+                // 2. 团队类型筛选：business(公务团)/island(环岛团)/reception(接待团)
+                if (typeFilter !== 'all') {
+                    filteredTeams = filteredTeams.filter(team => team.type === typeFilter);
+                }
+
+                // 3. 人数范围筛选：严格匹配HTML的≤10人/11-30人/≥31人
+                if (sizeFilter !== 'all') {
+                    filteredTeams = filteredTeams.filter(team => {
+                        if (sizeFilter === 'small') return team.size <= 10;
+                        if (sizeFilter === 'medium') return team.size >= 11 && team.size <= 30;
+                        if (sizeFilter === 'large') return team.size >= 31;
+                        return true;
+                    });
+                }
+
+                // 4. 关键词搜索：匹配HTML占位符「团队名称/导游」，支持模糊搜索
+                if (searchTerm) {
+                    filteredTeams = filteredTeams.filter(team => {
+                        const guide = getGuideById(team.guideId); // 关联导游信息
+                        const guideName = guide?.name.toLowerCase().trim() || '';
+                        // 匹配团队名称（模糊）或导游姓名（模糊）
+                        return team.name.toLowerCase().trim().includes(searchTerm) || guideName.includes(searchTerm);
+                    });
+                }
+
+                // 渲染筛选后的团队列表
+                filteredTeams.forEach(team => {
+                    // 找到关联的车辆和导游
+                    const vehicle = getVehicleById(team.vehicleId);
+                    const guide = getGuideById(team.guideId);
+        
+		    // 创建表格行
+                    const row = document.createElement('tr');
+                    row.className = 'hover:bg-gray-50'; // 与车辆列表hover样式保持一致
+		     // 设置行内容（8列：名称、类型、人数、日期、车辆、导游、状态、操作）
+                    row.innerHTML = `
+                        <td class="px-6 py-3">${team.name || '-'}</td>
+                        <td class="px-6 py-3">${getTeamTypeText(team.type)}</td>
+                        <td class="px-6 py-3">${team.size || 0}人</td>
+                        <td class="px-6 py-3">${formatDate(team.startDate)} 至 ${formatDate(team.endDate)}</td>
+                        <td class="px-6 py-3">${vehicle?.plateNumber || '未分配'}</td>
+                        <td class="px-6 py-3">${guide?.name || '未分配'}</td>
+                        <td class="px-6 py-3">${getStatusBadge(team.status)}</td>
+                        <td class="px-6 py-3 text-right">
+                            <div class="flex justify-between justify-end gap-2">  			
+                                <button class="text-primary hover:text-primary/80 text-sm" onclick="openTeamModal('${team.id}')">
+                                    <i class="fa fa-edit"></i> 编辑
+                                </button>
+                                <button class="text-gray-500 hover:text-danger text-sm" onclick="deleteTeam('${team.id}')">
+                                    <i class="fa fa-trash"></i> 删除
+                                </button>
+                            </div>
+                        </td>
+                    `;
+		    // 添加到表格体
+                    tableBody.appendChild(row);
+                });
+
+                // 空数据处理：无匹配结果时显示友好提示
+                if (filteredTeams.length === 0) {
+                    tableBody.innerHTML = `
+                        <tr>
+                            <td colspan="8" class="px-6 py-8 text-center text-gray-500 text-sm">
+                                <i class="fa fa-search fa-lg mb-2"></i>
+                                暂无匹配的团队数据
+                            </td>
+                        </tr>
+                    `;
+                }
+            }
+
+        // ===================== 备注管理功能 =====================
+        /**
+         * 打开备注编辑模态框
+         * 作用：点击"编辑备注"时，弹出模态框，加载当前备注内容
+         * @param {string} type 类型（vehicle=车辆/guide=导游）
+         * @param {string} id 车辆/导游的ID
+         */
+        function openRemarkModal(type, id) {
+	    // 获取模态框相关元素
+            const modal = document.getElementById('remark-modal');
+            const title = document.getElementById('remark-modal-title');
+            const content = document.getElementById('remark-content');
+            const itemId = document.getElementById('remark-item-id');
+            const itemType = document.getElementById('remark-item-type');
+            
+            // 设置模态框标题
+            title.textContent = type === 'vehicle' ? '编辑车辆备注' : '编辑导游备注';
+            // 保存当前编辑的ID和类型（隐藏输入框）
+            itemId.value = id;
+            itemType.value = type;
+            // 加载现有备注内容
+            let remark = '';
+            if (type === 'vehicle') remark = getVehicleById(id)?.remark || '';	// 车辆备注
+            else if (type === 'guide') remark = getGuideById(id)?.remark || '';	// 导游备注
+            content.value = remark;
+            // 显示模态框
+            modal.classList.remove('hidden');
+        }
+
+       /**
+         * 关闭备注模态框
+         * 作用：点击"取消"时，隐藏备注编辑模态框
+         */
+        function closeRemarkModal() {
+            document.getElementById('remark-modal').classList.add('hidden');
+        }
+
+        /**
+         * 关闭备注模态框
+         * 作用：点击"取消"时，隐藏备注编辑模态框
+         */
+        function saveRemark() {
+	    // 获取模态框中的数据
+            const id = document.getElementById('remark-item-id').value;
+            const type = document.getElementById('remark-item-type').value;
+            const remark = document.getElementById('remark-content').value.trim();
+            
+	    // 更新对应数据的备注
+            if (type === 'vehicle') {
+		// 找到车辆的索引，更新备注
+                const idx = vehicles.findIndex(v => v.id === id);
+                if (idx !== -1) vehicles[idx].remark = remark;
+            } else if (type === 'guide') {
+		// 找到导游的索引，更新备注
+                const idx = guides.findIndex(g => g.id === id);
+                if (idx !== -1) guides[idx].remark = remark;
+            }
+            
+	    // 保存到本地存储
+            saveDataToLocal();
+	    // 关闭模态框、提示用户保存成功
+            closeRemarkModal();
+            alert('备注保存成功！');
+        }
+
+
+   // ===================== 车辆维修、记录、管理功能 =====================
+        /**
+         * 打开维修记录模态框
+         * 作用：点击"维修记录"按钮时，弹出模态框，显示该车辆的维修记录，支持添加/删除
+         * @param {string} vehicleId 车辆ID
+         */
+    function openMaintenanceModal(vehicleId) {
+	// 找到对应的车辆
+        const vehicle = vehicles.find(v => v.id === vehicleId);
+        if (!vehicle) return;  // 车辆不存在则退出
+
+        // 设置模态框标题（显示车牌号）
+        document.getElementById('modal-title').textContent = `【${vehicle.plateNumber}】维修记录管理`;
+	// 设置模态框内容（现有记录+新增记录输入框+按钮）
+        document.getElementById('modal-content').innerHTML = `
+            <div class="space-y-4">
+                <!-- 现有维修记录展示 -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-500 mb-2">现有维修记录</label>
+                    <div id="maintenance-records-list" class="border border-border rounded-md p-3 min-h-[100px] bg-gray-50">
+                        ${vehicle.maintenanceRecords.length > 0 
+                            ? vehicle.maintenanceRecords.map((record, index) => `
+                                <div class="flex items-center justify-between py-1 border-b border-border last:border-0">
+                                    <span class="text-sm">${index + 1}. ${record}</span>
+                                    <button onclick="deleteMaintenanceRecord('${vehicleId}', ${index})" class="text-danger text-xs hover:text-danger/80">
+                                        <i class="fa fa-trash-o"></i> 删除
+                                    </button>
+                                </div>
+                              `).join('') 
+                            : '<p class="text-gray-400 text-sm">暂无维修记录</p>'}
+                    </div>
+                </div>
+
+                <!-- 新增维修记录 -->
+                <div>
+                    <label class="block text-sm font-medium text-gray-500 mb-2">新增维修记录</label>
+                    <div class="flex gap-2">
+                        <input type="text" id="new-maintenance-record" placeholder="例如：2026-02-18：更换机油" 
+                               class="input-default flex-1">
+                        <button onclick="addMaintenanceRecord('${vehicleId}')" class="btn-primary whitespace-nowrap">
+                            <i class="fa fa-plus"></i> 添加
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 保存按钮 -->
+                <div class="flex justify-end mt-4">
+                    <button onclick="closeModal()" class="btn-secondary mr-2">
+                        <i class="fa fa-times"></i> 取消
+                    </button>
+                    <button onclick="saveMaintenanceModal('${vehicleId}')" class="btn-primary">
+                        <i class="fa fa-save"></i> 保存
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // 显示模态框
+        document.getElementById('modal').classList.remove('hidden');
+    }
+
+    	/**
+         * 添加单条维修记录
+         * 作用：在维修记录模态框中，点击"添加"时，将输入的内容添加到车辆的维修记录列表
+         * @param {string} vehicleId 车辆ID
+         */
+    function addMaintenanceRecord(vehicleId) {
+	// 获取输入框内容
+        const input = document.getElementById('new-maintenance-record');
+	// 验证：不能为空
+        const record = input.value.trim();
+        if (!record) {
+            alert('请输入维修记录内容');
+            return;
+        }
+
+	// 找到车辆，添加记录
+        const vehicle = vehicles.find(v => v.id === vehicleId);
+        if (vehicle) {
+            vehicle.maintenanceRecords.push(record);
+            input.value = ''; // 清空输入框
+            // 重新打开模态框（刷新记录列表）
+            openMaintenanceModal(vehicleId);
+        }
+    }
+
+    	/**
+         * 删除单条维修记录
+         * 作用：点击维修记录后的"删除"按钮，删除该条记录
+         * @param {string} vehicleId 车辆ID
+         * @param {number} index 记录在数组中的索引
+         */
+    function deleteMaintenanceRecord(vehicleId, index) {
+	// 找到车辆
+        const vehicle = vehicles.find(v => v.id === vehicleId);
+	// 确认删除后，移除该条记录
+        if (vehicle && confirm('确定删除这条维修记录吗？')) {
+            vehicle.maintenanceRecords.splice(index, 1);
+            // 重新打开模态框（刷新记录列表）
+            openMaintenanceModal(vehicleId);
+        }
+    }
+
+    	/**
+         * 保存维修记录并关闭模态框
+         * 作用：点击"保存"时，将维修记录保存到本地存储，刷新车辆列表，关闭模态框
+         * @param {string} vehicleId 车辆ID
+         */
+    function saveMaintenanceModal(vehicleId) {
+        saveDataToLocal(); 			// 保存到本地存储
+        renderVehiclesTable(); 		// 刷新车辆列表
+        closeModal(); 				// 关闭模态框
+        alert('维修记录保存成功！'); 	// 提示用户
+    }
+
+    // ===================== 通用模态框关闭函数-作用：关闭全局模态框（维修记录、编辑车辆/导游/团队等）=====================
+    function closeModal() {
+        document.getElementById('modal').classList.add('hidden');
+        // 清空模态框内容（避免缓存）
+        document.getElementById('modal-content').innerHTML = '';
+    }
+
+    // ===================== 车辆列表渲染（表格形式） =====================
+	/**
+         * 渲染车辆列表（表格形式）
+         * 作用：以表格样式显示车辆信息，支持筛选，包含维修记录/编辑/删除操作按钮
+         */
+    function renderVehiclesTable() {
+	// 获取车辆列表的表格体元素
+        const tableBody = document.getElementById('vehicles-table');
+        if (!tableBody) return;	// 元素不存在则退出
+
+        // 清空原有内容
+        tableBody.innerHTML = '';
+
+        // 获取筛选条件
+        const statusFilter = document.getElementById('vehicle-status-filter')?.value || 'all';		// 状态筛选
+        const typeFilter = document.getElementById('vehicle-type-filter')?.value || 'all';			// 类型筛选
+        const capacityFilter = document.getElementById('vehicle-capacity-filter')?.value || 'all';	// 座位数筛选
+        const searchText = document.getElementById('vehicle-search')?.value.toLowerCase() || '';	// 关键词搜索
+
+        // 筛选车辆
+        const filteredVehicles = vehicles.filter(vehicle => {
+	    // 状态匹配
+            const statusMatch = statusFilter === 'all' || vehicle.status === statusFilter;
+	    // 类型匹配
+            const typeMatch = typeFilter === 'all' || vehicle.type === typeFilter;
+            // 座位数匹配
+            const capacityMatch = capacityFilter === 'all' || 
+                (capacityFilter === 'small' && vehicle.capacity <=7) ||
+                (capacityFilter === 'medium' && vehicle.capacity >7 && vehicle.capacity <=15) ||
+                (capacityFilter === 'large' && vehicle.capacity >=16);
+	    // 关键词匹配（车牌号/品牌/型号）
+            const searchMatch = vehicle.plateNumber.toLowerCase().includes(searchText) || 
+                vehicle.brand.toLowerCase().includes(searchText) ||
+                vehicle.model.toLowerCase().includes(searchText);
+            // 所有条件都满足则保留
+            return statusMatch && typeMatch && capacityMatch && searchMatch;
+        });
+
+        // 渲染筛选后的车辆列表
+        filteredVehicles.forEach(vehicle => {
+	    // 创建表格行
+            const tr = document.createElement('tr');	// 悬浮样式
+            tr.className = 'hover:bg-gray-50 transition-colors';
+	    // 设置行内容（8列：车牌号、品牌/型号、座位数、年份、类型、状态、备注、操作）
+            tr.innerHTML = `
+                <td class="px-6 py-4">${vehicle.plateNumber}</td>
+                <td class="px-6 py-4">${vehicle.brand}/${vehicle.model}</td>
+                <td class="px-6 py-4">${vehicle.capacity}座</td>
+                <td class="px-6 py-4">${vehicle.year}</td>
+                <td class="px-6 py-4">
+                    <span class="badge ${vehicle.type === 'bus' ? 'bg-primary/10 text-primary' : vehicle.type === 'van' ? 'bg-info/10 text-info' : 'bg-warning/10 text-warning'}">
+                        ${vehicle.type === 'bus' ? '大巴' : vehicle.type === 'van' ? '商务车' : '轿车'}
+                    </span>
+                </td>
+                <td class="px-6 py-4">
+                    <span class="badge ${vehicle.status === 'available' ? 'bg-success/10 text-success' : vehicle.status === 'scheduled' ? 'bg-warning/10 text-warning' : 'bg-danger/10 text-danger'}">
+                        ${vehicle.status === 'available' ? '可用' : vehicle.status === 'scheduled' ? '已调度' : '维护中'}
+                    </span>
+                </td>
+                <td class="px-6 py-4 text-sm">${vehicle.remark || '-'}</td>
+                <td class="px-6 py-4 text-right">
+                    <div class="flex justify-end gap-2">
+                        <!-- 维修记录按钮 -->
+                        <button onclick="openMaintenanceModal('${vehicle.id}')" class="text-primary hover:text-primary/80 text-sm">
+                            <i class="fa fa-wrench mr-1"></i> 维修记录
+                        </button>
+               <button class="text-blue-500 hover:text-blue-700 text-sm" onclick="openVehicleModal('${vehicle.id}')">
+                                <i class="fa fa-edit"></i> 编辑
+                            </button>
+                        </button>
+                        <button onclick="deleteVehicle('${vehicle.id}')" class="text-danger hover:text-danger/80 text-sm">
+                            <i class="fa fa-trash mr-1"></i> 删除
+                        </button>
+                    </div>
+                </td>
+            `;
+	    // 添加到表格体
+            tableBody.appendChild(tr);
+        });
+    }
+
+
+        /**
+         * 打开车辆添加/编辑模态框
+         * 作用：点击"添加车辆"或"编辑车辆"时，弹出模态框，加载车辆信息（编辑模式）或空表单（新增模式）
+         * @param {string} id 车辆ID（编辑模式传ID，新增模式不传）
+         */
+        function openVehicleModal(id = '') {
+	    // 获取模态框元素
+            const modal = document.getElementById('modal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalContent = document.getElementById('modal-content');
+            // 设置编辑模式：有ID则为编辑，无则为新增
+            editMode = !!id;
+            currentEditId = id;
+            // 设置模态框标题
+            modalTitle.textContent = editMode ? '编辑车辆' : '添加车辆';
+            // 获取车辆数据（编辑模式-取现有数据；新增模式-取默认空数据）
+            const vehicle = editMode ? getVehicleById(id) : {
+                brand: '', model: '', capacity: 0, year: new Date().getFullYear(),
+                plateNumber: '', status: 'available', type: 'van', remark: '', maintenanceRecords: ''
+            };
+            // 渲染车辆表单（包含所有必填项和下拉框）
+            modalContent.innerHTML = `
+                <form id="vehicle-form" onsubmit="saveVehicle(event)">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-500 mb-1">车牌号 <span class="text-danger">*</span></label>
+                            <input type="text" name="plateNumber" value="${vehicle.plateNumber}" required class="input-default" placeholder="请输入车牌号">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">品牌 <span class="text-danger">*</span></label>
+                            <input type="text" name="brand" value="${vehicle.brand}" required class="input-default" placeholder="请输入车辆品牌">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">型号 <span class="text-danger">*</span></label>
+                            <input type="text" name="model" value="${vehicle.model}" required class="input-default" placeholder="请输入车辆型号">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">座位数 <span class="text-danger">*</span></label>
+                            <input type="number" name="capacity" min="1" value="${vehicle.capacity}" required class="input-default" placeholder="请输入座位数">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">购买年份 <span class="text-danger">*</span></label>
+                            <input type="number" name="year" min="2000" max="${new Date().getFullYear()}" value="${vehicle.year}" required class="input-default" placeholder="请输入购买年份">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">车辆类型 <span class="text-danger">*</span></label>
+                            <select name="type" required class="input-default">
+                                <option value="bus" ${vehicle.type === 'bus' ? 'selected' : ''}>大巴</option>
+                                <option value="van" ${vehicle.type === 'van' ? 'selected' : ''}>商务车</option>
+                                <option value="car" ${vehicle.type === 'car' ? 'selected' : ''}>轿车</option>
+                            </select>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">车辆状态 <span class="text-danger">*</span></label>
+                            <select name="status" required class="input-default">
+                                <option value="available" ${vehicle.status === 'available' ? 'selected' : ''}>可用</option>
+                                <option value="scheduled" ${vehicle.status === 'scheduled' ? 'selected' : ''}>已调度</option>
+                                <option value="maintenance" ${vehicle.status === 'maintenance' ? 'selected' : ''}>维护中</option>
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-500 mb-1">备注</label>
+                            <textarea name="remark" class="input-default h-20 resize-none" placeholder="请输入车辆备注">${vehicle.remark || ''}</textarea>
+                        </div>			
+                    </div>
+                    <div class="mt-6 flex justify-end gap-3">
+                        <button type="button" class="btn-secondary" onclick="closeModal()">取消</button>
+                        <button type="submit" class="btn-primary">${editMode ? '保存修改' : '添加车辆'}</button>
+                    </div>
+                </form>
+            `;
+            // 显示模态框
+            modal.classList.remove('hidden');
+        }
+
+	/**
+         * 保存车辆（新增/编辑）
+         * 作用：提交车辆表单时，保存数据（新增则生成新ID，编辑则更新现有数据）
+         * @param {Event} event 表单提交事件
+         */
+        function saveVehicle(e) {
+            e.preventDefault();		// 阻止表单默认提交行为
+	    // 获取表单数据
+            const form = e.target;
+            const formData = new FormData(form);
+            // 构造车辆数据
+            const vehicleData = {
+                id: editMode ? currentEditId : generateId('v'),	// 编辑用原ID，新增生成新ID
+                brand: formData.get('brand'),
+                model: formData.get('model'),
+                capacity: parseInt(formData.get('capacity')),
+                year: parseInt(formData.get('year')),
+                plateNumber: formData.get('plateNumber'),
+                status: formData.get('status'),
+                type: formData.get('type'),
+                maintenanceRecords: formData.get('remark2'), // 保留原有维修记录
+                remark: formData.get('remark') || ''
+
+            };
+
+            // 编辑模式：更新现有车辆
+            if (editMode) {
+                const idx = vehicles.findIndex(v => v.id === currentEditId);
+                vehicles[idx] = vehicleData;
+            } else {
+		// 新增模式：添加新车辆
+                vehicles.push(vehicleData);
+            }
+            // 保存到本地存储
+            saveDataToLocal();
+            closeModal();	// 关闭模态框	
+            alert(editMode ? '车辆修改成功！' : '车辆添加成功！');	// 提示用户
+        }
+
+        // ===================== 导游添加/编辑功能 =====================
+	/**
+         * 打开导游添加/编辑模态框
+         * 作用：点击"添加导游"或"编辑导游"时，弹出模态框，加载导游信息（编辑模式）或空表单（新增模式）
+         * @param {string} id 导游ID（编辑模式传ID，新增模式不传）
+         */
+        function openGuideModal(id = '') {
+	    // 获取模态框核心元素
+            const modal = document.getElementById('modal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalContent = document.getElementById('modal-content');
+
+            // 设置编辑模式标识：有ID是编辑，无ID是新增
+            editMode = !!id;
+            currentEditId = id;
+
+            // 设置模态框标题（区分新增/编辑）
+            modalTitle.textContent = editMode ? '编辑导游' : '添加导游';
+
+            // 获取导游数据：编辑模式取现有数据，新增模式取默认空数据
+            const guide = editMode ? getGuideById(id) : {
+                name: '', age: 20, experience: 1, languages: ['chinese'],
+                specialties: ['history'], rating: 4.0, status: 'available',
+                certifications: ['导游证'], remark: ''
+            };
+
+            // 渲染导游表单（包含所有必填项和下拉选择框）
+            modalContent.innerHTML = `
+                <form id="guide-form" onsubmit="saveGuide(event)">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+			<!-- 姓名（必填） -->
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-500 mb-1">导游姓名 <span class="text-danger">*</span></label>
+                            <input type="text" name="name" value="${guide.name}" required class="input-default" placeholder="请输入导游姓名">
+                        </div>
+			<!-- 年龄（必填） -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">年龄 <span class="text-danger">*</span></label>
+                            <input type="number" name="age" min="18" max="60" value="${guide.age}" required class="input-default" placeholder="请输入年龄">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">从业年限 <span class="text-danger">*</span></label>
+                            <input type="number" name="experience" min="1" value="${guide.experience}" required class="input-default" placeholder="请输入从业年限">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">语言能力 <span class="text-danger">*</span></label>
+                            <select name="languages" multiple size="3" required class="input-default h-24">
+                                <option value="chinese" ${guide.languages.includes('chinese') ? 'selected' : ''}>中文</option>
+                                <option value="english" ${guide.languages.includes('english') ? 'selected' : ''}>英语</option>
+                                <option value="japanese" ${guide.languages.includes('japanese') ? 'selected' : ''}>日语</option>
+                                <option value="korean" ${guide.languages.includes('korean') ? 'selected' : ''}>韩语</option>
+                                <option value="french" ${guide.languages.includes('french') ? 'selected' : ''}>法语</option>
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">按住Ctrl可多选</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">专长领域 <span class="text-danger">*</span></label>
+                            <select name="specialties" multiple size="3" required class="input-default h-24">
+                                <option value="history" ${guide.specialties.includes('history') ? 'selected' : ''}>历史文化</option>
+                                <option value="nature" ${guide.specialties.includes('nature') ? 'selected' : ''}>自然风光</option>
+                                <option value="shopping" ${guide.specialties.includes('shopping') ? 'selected' : ''}>购物指导</option>
+                                <option value="food" ${guide.specialties.includes('food') ? 'selected' : ''}>美食推荐</option>
+                                <option value="business" ${guide.specialties.includes('business') ? 'selected' : ''}>商务接待</option>
+                            </select>
+                            <p class="text-xs text-gray-500 mt-1">按住Ctrl可多选</p>
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">评分 <span class="text-danger">*</span></label>
+                            <input type="number" name="rating" min="0" max="5" step="0.1" value="${guide.rating}" required class="input-default" placeholder="0.0-5.0">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">导游状态 <span class="text-danger">*</span></label>
+                            <select name="status" required class="input-default">
+                                <option value="available" ${guide.status === 'available' ? 'selected' : ''}>可用</option>
+                                <option value="scheduled" ${guide.status === 'scheduled' ? 'selected' : ''}>已调度</option>
+                                <option value="off" ${guide.status === 'off' ? 'selected' : ''}>休息</option>
+                            </select>
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-500 mb-1">手机号</label>
+                            <input type="text" name="certifications" value="${guide.certifications.join(',')}" class="input-default" placeholder="多个手机号用英文逗号分隔">
+                        </div>
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-500 mb-1">备注</label>
+                            <textarea name="remark" class="input-default h-20 resize-none" placeholder="请输入导游备注">${guide.remark || ''}</textarea>
+                        </div>
+                    </div>
+		    <!-- 操作按钮 -->
+                    <div class="mt-6 flex justify-end gap-3">
+                        <button type="button" class="btn-secondary" onclick="closeModal()">取消</button>
+                        <button type="submit" class="btn-primary">${editMode ? '保存修改' : '添加导游'}</button>
+                    </div>
+                </form>
+            `;
+            // 显示模态框
+            modal.classList.remove('hidden');
+        }
+
+	/**
+         * 保存导游（新增/编辑）
+         * 作用：提交导游表单时，保存数据（新增生成新ID，编辑更新现有数据）
+         * @param {Event} event 表单提交事件
+         */
+        function saveGuide(e) {
+            e.preventDefault();		// 阻止表单默认提交（避免页面刷新）
+
+	    // 获取表单元素和表单数据
+            const form = e.target;
+            const formData = new FormData(form);
+
+            // 处理多选和分隔符  -- 收集多选框数据（语言/专长）
+            const getMultiSelect = (name) => Array.from(form.querySelector(`select[name=${name}]`).selectedOptions).map(o => o.value);
+            const certifications = formData.get('certifications').split(',').map(item => item.trim()).filter(Boolean);
+
+            // 构造导游数据
+            const guideData = {
+                id: editMode ? currentEditId : generateId('g'),	// 编辑用原ID，新增生成唯一ID
+                name: formData.get('name'),
+                age: parseInt(formData.get('age')),
+                experience: parseInt(formData.get('experience')),
+                languages: getMultiSelect('languages'),	// 多选的语言
+                specialties: getMultiSelect('specialties'),	// 多选的专长
+                rating: parseFloat(formData.get('rating')),
+                status: formData.get('status'),
+                certifications: certifications.length > 0 ? certifications : [''],
+                remark: formData.get('remark') || ''
+            };
+
+            // 编辑模式：更新现有导游数据
+            if (editMode) {
+                const idx = guides.findIndex(g => g.id === currentEditId);
+                guides[idx] = guideData;
+            } else {
+		// 新增模式：添加新导游到列表
+                guides.push(guideData);
+            }
+
+            // 保存数据到本地存储、关闭模态框并刷新
+            saveDataToLocal();
+            closeModal();
+            alert(editMode ? '导游修改成功！' : '导游添加成功！');
+        }
+
+        // ===================== 团队添加/编辑功能 =====================
+	/**
+         * 打开团队添加/编辑模态框
+         * 作用：点击"添加团队"或"编辑团队"时，弹出模态框，加载团队信息（编辑）或空表单（新增）
+         * @param {string} id 团队ID（编辑模式传ID，新增模式不传）
+         */
+        function openTeamModal(id = '') {
+	    // 获取模态框核心元素
+            const modal = document.getElementById('modal');
+            const modalTitle = document.getElementById('modal-title');
+            const modalContent = document.getElementById('modal-content');
+
+            // 设置编辑模式和当前编辑ID
+            editMode = !!id;
+            currentEditId = id;
+
+	    // 设置模态框标题
+            modalTitle.textContent = editMode ? '编辑团队' : '添加团队';
+
+            // 获取团队数据：编辑取现有数据，新增取默认空数据
+            const team = editMode ? teams.find(t => t.id === id) : {
+                name: '', type: 'business', size: 1,	// 默认公务团一个人
+		startDate: formatDate(new Date()), // 默认当前日期
+                endDate: formatDate(new Date()), 
+		vehicleId: '', guideId: '', status: 'pending', remark: ''
+            };
+
+            // 生成车辆下拉选项（用于选择关联车辆）
+            const vehicleOptions = vehicles.map(v => `
+		<option value="${v.id}" ${team.vehicleId === v.id ? 'selected' : ''}>
+			${v.plateNumber} (${v.brand}/${v.model}) - ${v.capacity}座
+		</option>`
+	).join('');
+
+	    // 生成导游下拉选项（用于选择关联导游）
+            const guideOptions = guides.map(g => `
+		<option value="${g.id}" ${team.guideId === g.id ? 'selected' : ''}>
+			${g.name} (${g.specialties[0]})
+		</option>`
+	).join('');
+
+            // 渲染团队表单
+            modalContent.innerHTML = `
+                <form id="team-form" onsubmit="saveTeam(event)">
+                    <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
+			<!-- 团队名称（必填） -->
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-500 mb-1">团队名称 <span class="text-danger">*</span></label>
+                            <input type="text" name="name" value="${team.name}" required class="input-default" placeholder="请输入团队名称">
+                        </div>
+			<!-- 团队类型（必填） -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">团队类型 <span class="text-danger">*</span></label>
+                            <select name="type" required class="input-default">
+                                <option value="business" ${team.type === 'business' ? 'selected' : ''}>公务团</option>
+                                <option value="island" ${team.type === 'island' ? 'selected' : ''}>环岛团</option>
+                                <option value="reception" ${team.type === 'reception' ? 'selected' : ''}>接待团</option>
+                            </select>
+                        </div>
+			<!-- 团队人数（必填） -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">团队人数 <span class="text-danger">*</span></label>
+                            <input type="number" name="size" min="1" value="${team.size}" required class="input-default" placeholder="请输入团队人数">
+                        </div>
+			<!-- 开始日期（必填） -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">开始日期 <span class="text-danger">*</span></label>
+                            <input type="date" name="startDate" value="${team.startDate}" required class="input-default">
+                        </div>
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">结束日期 <span class="text-danger">*</span></label>
+                            <input type="date" name="endDate" value="${team.endDate}" required class="input-default">
+                        </div>
+			<!-- 关联车辆（选填） -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">分配车辆</label>
+                            <select name="vehicleId" class="input-default">
+                                <option value="">-- 请选择车辆 --</option>
+                                ${vehicleOptions}
+                            </select>
+                        </div>
+			<!-- 关联导游（选填） -->
+                        <div>
+                            <label class="block text-sm font-medium text-gray-500 mb-1">分配导游</label>
+                            <select name="guideId" class="input-default">
+                                <option value="">-- 请选择导游 --</option>
+                                ${guideOptions}
+                            </select>
+                        </div>
+			<!-- 团队状态（必填） -->
+                        <div class="col-span-2">
+                            <label class="block text-sm font-medium text-gray-500 mb-1">团队状态 <span class="text-danger">*</span></label>
+                            <select name="status" required class="input-default">
+                                <option value="pending" ${team.status === 'pending' ? 'selected' : ''}>待确认</option>
+                                <option value="confirmed" ${team.status === 'confirmed' ? 'selected' : ''}>已确认</option>
+				<option value="completed"${team.status === 'completed' ? 'selected' : ''}>已完成</option> 
+                            </select>
+                        </div>
+		    <!-- 新增：团队备注字段 -->
+                    <div class="mt-2">
+                        <label class="block text-sm font-medium text-gray-500 mb-1">团队备注</label>
+                        <textarea name="remark" class="input-default" rows="2" placeholder="填写团队备注信息（如行程说明、特殊要求等）">${team.remark || ''}</textarea>
+                    </div>                    
+                </div>
+
+		    <!-- 操作按钮 -->
+                    <div class="mt-6 flex justify-end gap-3">
+                        <button type="button" class="btn-secondary" onclick="closeModal()">取消</button>
+                        <button type="submit" class="btn-primary">${editMode ? '保存修改' : '创建团队'}</button>
+                    </div>
+                </form>
+            `;
+            // 显示模态框
+            modal.classList.remove('hidden');
+        }
+
+	/**
+         * 保存团队（新增/编辑）
+         * 作用：提交团队表单时，保存数据（新增生成新ID，编辑更新现有数据）
+         * 同时自动更新关联车辆/导游的状态为"已调度"
+         * @param {Event} event 表单提交事件
+         */
+        function saveTeam(e) {
+            e.preventDefault();		// 阻止表单默认提交
+
+	    // 获取表单数据
+            const form = e.target;
+            const formData = new FormData(form);
+
+            // 构造团队数据
+            const newTeam = {
+                id: editMode ? currentEditId : generateId('t'),	// 编辑用原ID，新增生成唯一ID
+                name: formData.get('name'),
+                type: formData.get('type'),
+                size: parseInt(formData.get('size')),
+                startDate: formData.get('startDate'),
+                endDate: formData.get('endDate'),
+                vehicleId: formData.get('vehicleId') || '',
+                guideId: formData.get('guideId') || '',
+                status: formData.get('status'), 
+		remark: formData.get('remark') || ''
+            };
+
+            // 编辑模式：先恢复原关联车辆/导游的状态（如果有）
+            if (editMode) {
+                const oldTeam = teams.find(t => t.id === currentEditId);
+                if (oldTeam) {
+                    // 恢复原车辆状态为可用
+                    const oldVehicle = getVehicleById(oldTeam.vehicleId);
+                    if (oldVehicle) oldVehicle.status = 'available';
+                    // 恢复原导游状态为可用
+                    const oldGuide = getGuideById(oldTeam.guideId);
+                    if (oldGuide) oldGuide.status = 'available';
+                }
+            }
+		
+	    // 更新当前团队数据
+            if (editMode) {
+                const index = teams.findIndex(t => t.id === currentEditId);
+                if (index !== -1) teams[index] = newTeam;
+            } else {
+                teams.push(newTeam);
+            }
+
+            // 自动将分配的车辆/导游状态设为"已调度"（团队状态为已确认时）
+            if (newTeam.status === 'confirmed') {
+                const vehicle = getVehicleById(newTeam.vehicleId);
+                if (vehicle) vehicle.status = 'scheduled'; // 车辆设为已调度
+                const guide = getGuideById(newTeam.guideId);
+                if (guide) guide.status = 'scheduled'; // 导游设为已调度
+            }
+
+            // 保存并刷新
+            saveDataToLocal();
+            closeModal();
+            alert(editMode ? '团队修改成功！' : '团队创建成功！');
+        }
+
+     
+        // ===================== 数据备份功能 =====================
+	/**
+         * 创建数据备份
+         * 作用：将当前所有数据（车辆/导游/团队）创建备份，存入本地存储
+         * 备份包含时间戳，方便区分不同版本的备份
+         */
+        function createBackup() {
+	    // 组装备份数据（包含当前时间戳和所有业务数据）
+            const backup = {
+                id: `backup_${Date.now()}`,
+                timestamp: new Date().toISOString(),  // 备份时间（可选本地toLocaleString-20260220扶苏）
+                data: { vehicles, guides, teams }		// 要备份的核心数据
+            };
+
+	    // 读取现有备份列表（无则为空数组）
+            const backups = JSON.parse(localStorage.getItem(BACKUP_STORAGE_KEY) || '[]');
+
+	    // 添加新备份到列表
+            backups.unshift(backup);
+
+	    // 保存更新后的备份列表
+            if (backups.length > 10) backups.splice(10);
+            localStorage.setItem(BACKUP_STORAGE_KEY, JSON.stringify(backups));
+
+	    // 刷新备份列表显示
+            renderBackupList();
+            alert('备份创建成功！');	// 提示用户
+        }
+
+	
+	/**
+         * 渲染备份表
+         */
+        function renderBackupList() {
+            const container = document.getElementById('backup-list');
+
+	    // 读取备份列表
+            const backups = JSON.parse(localStorage.getItem(BACKUP_STORAGE_KEY) || '[]');
+            if (backups.length === 0) {
+                container.innerHTML = '<p class="text-gray-500 text-sm">暂无备份记录</p>';
+                return;
+            }
+	    // 清空原有内容
+            container.innerHTML = '';
+            backups.forEach(backup => {
+                const date = new Date(backup.timestamp);
+                const formattedDate = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')} ${String(date.getHours()).padStart(2, '0')}:${String(date.getMinutes()).padStart(2, '0')}`;
+                const item = document.createElement('div');
+                item.className = 'flex justify-between items-center p-3 bg-gray-50 rounded-md';
+                item.innerHTML = `
+                    <div>
+                        <p class="font-medium">${formattedDate}</p>
+                        <p class="text-xs text-gray-500">备份ID: ${backup.id.slice(-8)}</p>
+                    </div>
+                    <div class="flex gap-2">
+                        <button class="btn-secondary text-xs px-3 py-1" onclick="downloadBackup('${backup.id}')">
+                            <i class="fa fa-download"></i> 下载
+                        </button>
+                        <button class="btn-primary text-xs px-3 py-1" onclick="restoreBackup('${backup.id}')">
+                            <i class="fa fa-undo"></i> 恢复
+                        </button>
+                    </div>
+                `;
+                container.appendChild(item);
+            });
+        }
+
+	/**
+         * 下载备份    
+         */
+        function downloadBackup(backupId) {
+            const backups = JSON.parse(localStorage.getItem(BACKUP_STORAGE_KEY) || '[]');
+            const backup = backups.find(b => b.id === backupId);
+            if (!backup) { alert('备份不存在！'); return; }
+            const blob = new Blob([JSON.stringify(backup.data, null, 2)], { type: 'application/json' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            link.download = `遨行管理备份_${backupId.slice(-8)}.json`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            URL.revokeObjectURL(link.href);
+        }
+
+
+	/**
+         * 恢复指定备份
+         * 作用：选择历史备份，将数据恢复到当前系统中
+         */
+        function restoreBackup(backupId) {
+            if (!confirm('恢复将覆盖当前所有数据，是否继续？')) return;
+            const backups = JSON.parse(localStorage.getItem(BACKUP_STORAGE_KEY) || '[]');
+            const backup = backups.find(b => b.id === backupId);
+            if (!backup) { alert('备份不存在！'); return; }
+
+	    // 恢复数据到全局变量
+            vehicles = backup.data.vehicles || [];
+            guides = backup.data.guides || [];
+            teams = backup.data.teams || [];
+
+	    // 保存恢复后的数据
+            saveDataToLocal();
+            alert('备份恢复成功！');	// 提示用户
+        }
+
+        function importBackupFile(file) {
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    if (!data.vehicles || !data.guides || !data.teams) { alert('备份格式错误！'); return; }
+                    if (confirm('导入将覆盖当前所有数据，是否继续？')) {
+                        vehicles = data.vehicles;
+                        guides = data.guides;
+                        teams = data.teams;
+                        saveDataToLocal();
+                        alert('备份导入成功！');
+                    }
+                } catch (err) {
+                    alert('解析失败：' + err.message);
+                }
+            };
+            reader.readAsText(file);
+        }
+
+        // ===================== 删除功能 =====================
+        function deleteVehicle(id) {
+            if (confirm('确定删除该车辆吗？删除后不可恢复！')) {
+                vehicles = vehicles.filter(v => v.id !== id);
+                saveDataToLocal();
+            }
+        }
+
+        function deleteGuide(id) {
+            if (confirm('确定删除该导游吗？删除后不可恢复！')) {
+                guides = guides.filter(g => g.id !== id);
+                saveDataToLocal();
+            }
+        }
+
+        function deleteTeam(id) {
+            if (confirm('确定删除该团队吗？删除后不可恢复！')) {
+                teams = teams.filter(t => t.id !== id);
+                saveDataToLocal();
+            }
+        }
+
+// ===================== 导游月度排班表核心逻辑（重写版） =====================
+// 封装成独立模块，避免全局变量冲突
+const GuideScheduleModule = (function() {
+    // 模块内私有变量
+    let currentDisplayMonth = ""; // 当前显示的月份 YYYY-MM
+    const WEEK_DAYS = ["日", "一", "二", "三", "四", "五", "六"]; // 星期映射
+    const TEAM_TYPE_MAP = { 
+        'business': '公务团', 
+        'island': '环岛团', 
+        'reception': '接待团' 
+    }; // 团队类型映射
+
+    const STATUS_CLASS_MAP = {
+    'confirmed': 'bg-green-200 text-green-900', // 深绿底
+    'pending': 'bg-orange-100 text-orange-800', // 橙色底
+    'completed': 'bg-blue-200 text-blue-900'    // 深蓝底
+}; // 状态样式映射
+
+    // 初始化模块
+    function init() {
+        // 设置默认显示当前月份
+        const now = new Date();
+        const year = now.getFullYear();
+        const month = String(now.getMonth() + 1).padStart(2, '0');
+        currentDisplayMonth = `${year}-${month}`;
+
+        // 初始化DOM加载完成后的操作
+        if (document.readyState === 'loading') {
+            document.addEventListener('DOMContentLoaded', setup);
+        } else {
+            setup();
+        }
+    }
+
+    // 核心设置函数
+    function setup() {
+        // 检查必要的DOM元素是否存在
+        if (!checkRequiredElements()) {
+            console.warn('排班表必要DOM元素缺失，跳过初始化');
+            return;
+        }
+
+        // 初始化显示
+        updateMonthDisplay();
+        renderDateHeader();
+        renderScheduleData();
+        
+        // 绑定事件
+        bindEvents();
+        
+        // 初始化样式修复
+        fixScheduleStyles();
+    }
+
+    // 检查必要的DOM元素
+    function checkRequiredElements() {
+        const requiredElements = [
+            'current-month-display',
+            'prev-month',
+            'next-month',
+            'guide-schedule-table',
+            'schedule-tbody'
+        ];
+        
+        return requiredElements.every(id => {
+            const el = document.getElementById(id);
+            if (!el) console.error(`缺失必要元素: #${id}`);
+            return !!el;
+        });
+    }
+
+    // 更新月份显示文本
+    function updateMonthDisplay() {
+        const displayEl = document.getElementById('current-month-display');
+        if (!displayEl) return;
+        
+        const [year, month] = currentDisplayMonth.split('-');
+        displayEl.textContent = `${year}年${month}月`;
+    }
+
+    // 渲染日期表头
+    function renderDateHeader() {
+        const tableHead = document.querySelector('#guide-schedule-table thead tr');
+        if (!tableHead) return;
+
+        // 清空原有日期列（保留第一列）
+        const dateCols = tableHead.querySelectorAll('th:not(:first-child)');
+        dateCols.forEach(col => col.remove());
+
+        // 计算当月天数
+        const [year, month] = currentDisplayMonth.split('-').map(Number);
+        const daysInMonth = new Date(year, month, 0).getDate();
+
+        // 生成日期列
+        for (let day = 1; day <= daysInMonth; day++) {
+            const th = document.createElement('th');
+            th.className = 'px-3 py-2 bg-gray-50 text-xs text-gray-500 text-center sticky';
+            th.style.minWidth = '80px';
+            
+            // 获取星期
+            const weekday = getWeekdayText(year, month - 1, day);
+            
+            th.innerHTML = `
+                <div class="font-medium">${day}号</div>
+                <div class="text-[10px] text-gray-400">${weekday}</div>
+            `;
+            tableHead.appendChild(th);
+        }
+    }
+
+    // 渲染排班数据
+    function renderScheduleData() {
+        const tbody = document.getElementById('schedule-tbody');
+        if (!tbody) return;
+        tbody.innerHTML = '';
+
+        // 解析当前月份
+        const [year, month] = currentDisplayMonth.split('-').map(Number);
+        if (isNaN(year) || isNaN(month) || month < 1 || month > 12) return;
+        
+        const daysInMonth = new Date(year, month, 0).getDate();
+
+        // 确保全局数据存在
+        if (typeof guides === 'undefined' || guides.length === 0) {
+            tbody.innerHTML = `
+                <tr>
+                    <td colspan="${daysInMonth + 1}" class="px-6 py-8 text-center text-gray-500">
+                        暂无导游数据
+                    </td>
+                </tr>
+            `;
+            return;
+        }
+
+        // 遍历导游生成排班行
+        guides.forEach(guide => {
+            const tr = document.createElement('tr');
+            tr.className = 'hover:bg-gray-50 transition-colors';
+
+            // 导游姓名列（冻结列）
+            const nameTd = document.createElement('td');
+            nameTd.className = 'px-3 py-2 font-medium sticky left-0 bg-white z-20 border-r border-border';
+            nameTd.textContent = guide.name;
+            tr.appendChild(nameTd);
+
+            // 每日排班列
+            for (let day = 1; day <= daysInMonth; day++) {
+                const dayTd = document.createElement('td');
+                dayTd.className = 'px-2 py-2 schedule-cell text-center border border-border';
+                dayTd.style.minWidth = '80px';
+                
+                const currentDateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                const team = findGuideTeamOnDate(guide.id, currentDateStr);
+
+                if (team) {
+                    // 查找关联车辆
+                    const vehicle = typeof vehicles !== 'undefined' 
+                        ? vehicles.find(v => v.id === team.vehicleId) 
+                        : null;
+                    const plateNumber = vehicle?.plateNumber || '未分配';
+                    const teamType = TEAM_TYPE_MAP[team.type] || team.type;
+                    const statusClass = STATUS_CLASS_MAP[team.status] || 'bg-gray-100 text-gray-800';
+
+                    // 新增：团队状态中文映射（自定义状态中文）
+		const statusTextMap = {
+   		 'confirmed': '📌',
+  		  'pending': '⚠️',
+  		  'completed': '✅'
+		};
+		
+		// 新增：状态文字的背景色（可自定义，也可复用原状态色但调浅）
+		const statusBadgeClass = {
+		    'confirmed': 'bg-green-50 text-green-800',  // 浅绿底+深绿字
+		    'pending': 'bg-orange-50 text-orange-800', // 浅橙底+深橙字
+		    'completed': 'bg-blue-50 text-blue-800'    // 浅蓝底+深蓝字
+		};
+	
+		const teamStatus = statusTextMap[team.status] || team.status; // 匹配状态中文
+		// 取状态对应的背景色，兜底用浅灰
+const statusBgClass = statusBadgeClass[team.status] || 'bg-gray-50 text-gray-700';
+
+
+		dayTd.innerHTML = `
+                        <div class="badge ${statusClass} text-xs py-1 px-2 rounded mb-1">${teamType}${teamStatus}</div>
+                        <div class="text-[10px] text-gray-500">${plateNumber}</div>
+		`;
+
+                } else {
+                    // 无排班
+                    dayTd.innerHTML = '<span class="text-gray-400 text-xs">空闲</span>';
+                }
+
+                tr.appendChild(dayTd);
+            }
+
+            tbody.appendChild(tr);
+        });
+    }
+
+    // 查找导游指定日期的团队
+    function findGuideTeamOnDate(guideId, dateStr) {
+        if (typeof teams === 'undefined' || teams.length === 0) return null;
+        
+        const targetDate = new Date(dateStr);
+        // 修复日期时间问题，只比较年月日
+        targetDate.setHours(0, 0, 0, 0);
+
+        return teams.find(team => {
+            if (team.guideId !== guideId) return false;
+            
+            const startDate = new Date(team.startDate);
+            const endDate = new Date(team.endDate);
+            startDate.setHours(0, 0, 0, 0);
+            endDate.setHours(0, 0, 0, 0);
+
+            return targetDate >= startDate && targetDate <= endDate;
+        });
+    }
+
+    // 获取星期文本
+    function getWeekdayText(year, month, day) {
+        try {
+            const date = new Date(year, month, day);
+            return `周${WEEK_DAYS[date.getDay()]}`;
+        } catch (e) {
+            return '';
+        }
+    }
+
+    // 切换月份
+    function changeMonth(direction) {
+        const [year, month] = currentDisplayMonth.split('-').map(Number);
+        let newYear = year;
+        let newMonth = month + direction;
+
+        // 处理月份边界
+        if (newMonth < 1) {
+            newMonth = 12;
+            newYear -= 1;
+        } else if (newMonth > 12) {
+            newMonth = 1;
+            newYear += 1;
+        }
+
+        // 更新当前月份
+        currentDisplayMonth = `${newYear}-${String(newMonth).padStart(2, '0')}`;
+        
+        // 重新渲染
+        updateMonthDisplay();
+        renderDateHeader();
+        renderScheduleData();
+    }
+
+    // 绑定事件
+    function bindEvents() {
+        // 上月按钮
+        const prevBtn = document.getElementById('prev-month');
+        if (prevBtn) {
+            prevBtn.addEventListener('click', () => changeMonth(-1));
+        }
+
+        // 下月按钮
+        const nextBtn = document.getElementById('next-month');
+        if (nextBtn) {
+            nextBtn.addEventListener('click', () => changeMonth(1));
+        }
+    }
+
+    // 修复排班表样式
+    function fixScheduleStyles() {
+        // 只添加一次样式
+        if (document.getElementById('schedule-styles')) return;
+
+        const style = document.createElement('style');
+        style.id = 'schedule-styles';
+        style.textContent = `
+            #guide-schedule-table {
+                border-collapse: collapse;
+                width: 100%;
+                overflow-x: auto;
+                display: block;
+                max-width: 100%;
+                margin: 0;
+            }
+            #guide-schedule-table thead {
+                position: sticky;
+                top: 0;
+                z-index: 15;
+                background: white;
+            }
+            #guide-schedule-table th:first-child,
+            #guide-schedule-table td:first-child {
+                position: sticky;
+                left: 0;
+                z-index: 20;
+                background: white;
+                border-right: 1px solid #e2e8f0;
+            }
+            #guide-schedule-table th, 
+            #guide-schedule-table td {
+                border: 1px solid #e2e8f0;
+                min-width: 80px;
+                height: 60px;
+                vertical-align: middle;
+            }
+            .badge {
+                display: inline-block;
+                padding: 2px 6px;
+                border-radius: 4px;
+                font-size: 11px;
+                line-height: 1.2;
+            }
+            .schedule-cell {
+                min-width: 80px !important;
+            }
+        `;
+        document.head.appendChild(style);
+    }
+
+    // 暴露公共方法
+    return {
+        init: init,
+        refresh: function() {
+            renderDateHeader();
+            renderScheduleData();
+        }
+    };
+})();
+
+ // ===================== 图表初始化 =====================
+// 初始化所有图表（整合原有+新增）
+function initCharts() {
+    // ===================== 1. 车辆状态分布（原有） =====================
+    const vehicleCtx = document.getElementById('vehicleStatusChart');
+    if (vehicleCtx) {
+        // 清空原有图表（避免重复渲染）
+        if (vehicleCtx.chart) vehicleCtx.chart.destroy();
+        
+        const available = vehicles.filter(v => v.status === 'available').length;
+        const scheduled = vehicles.filter(v => v.status === 'scheduled').length;
+        const maintenance = vehicles.filter(v => v.status === 'maintenance').length;
+        
+        vehicleCtx.chart = new Chart(vehicleCtx, {
+            type: 'doughnut',
+            data: { 
+                labels: ['可用', '已调度', '维护中'], 
+                datasets: [{ 
+                    data: [available, scheduled, maintenance], 
+                    backgroundColor: ['#10b981', '#f59e0b', '#ef4444'], 
+                    borderWidth: 0 
+                }] 
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { 
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((value / total) * 100);
+                                return `${label}: ${value}辆 (${percentage}%)`;
+                            }
+                        }
+                    }
+                } 
+            }
+        });
+    }
+
+    // ===================== 2. 团队类型占比（原有） =====================
+    const teamTypeCtx = document.getElementById('teamTypeChart');
+    if (teamTypeCtx) {
+        // 清空原有图表
+        if (teamTypeCtx.chart) teamTypeCtx.chart.destroy();
+        
+        // 统计团队类型（business/公务团、island/环岛团、reception/接待团）
+        const business = teams.filter(t => t.type === 'business').length;
+        const island = teams.filter(t => t.type === 'island').length;
+        const reception = teams.filter(t => t.type === 'reception').length;
+        
+        teamTypeCtx.chart = new Chart(teamTypeCtx, {
+            type: 'doughnut',
+            data: { 
+                labels: ['公务团', '环岛团', '接待团'], 
+                datasets: [{ 
+                    data: [business, island, reception], 
+                    backgroundColor: ['#3b82f6', '#8b5cf6', '#ec4899'], 
+                    borderWidth: 0 
+                }] 
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { 
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((value / total) * 100);
+                                return `${label}: ${value}个 (${percentage}%)`;
+                            }
+                        }
+                    }
+                } 
+            }
+        });
+    }
+
+ // ===================== 3. 导游状态分布（新增） =====================
+    const guideCtx = document.getElementById('guideStatusChart');
+    if (guideCtx) {
+        // 清空原有图表
+        if (guideCtx.chart) guideCtx.chart.destroy();
+        
+        // 统计导游状态（available/可用、scheduled/已排班、leave/请假）
+        const guideAvailable = guides.filter(g => g.status === 'available').length;
+        const guideScheduled = guides.filter(g => g.status === 'scheduled').length;
+        const guideLeave = guides.filter(g => g.status === 'leave').length;
+        
+        guideCtx.chart = new Chart(guideCtx, {
+            type: 'doughnut',
+            data: { 
+                labels: ['可用', '已排班', '请假'], 
+                datasets: [{ 
+                    data: [guideAvailable, guideScheduled, guideLeave], 
+                    backgroundColor: ['#10b981', '#f59e0b', '#6366f1'], 
+                    borderWidth: 0 
+                }] 
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { 
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((value / total) * 100);
+                                return `${label}: ${value}人 (${percentage}%)`;
+                            }
+                        }
+                    }
+                } 
+            }
+        });
+    }
+
+    // ===================== 4. 团队状态分布（新增） =====================
+    const teamStatusCtx = document.getElementById('teamStatusChart');
+    if (teamStatusCtx) {
+        // 清空原有图表
+        if (teamStatusCtx.chart) teamStatusCtx.chart.destroy();
+        
+        // 统计团队状态（confirmed/已确认、pending/待确认、completed/已完成）
+        const teamConfirmed = teams.filter(t => t.status === 'confirmed').length;
+        const teamPending = teams.filter(t => t.status === 'pending').length;
+        const teamCompleted = teams.filter(t => t.status === 'completed').length;
+        
+        teamStatusCtx.chart = new Chart(teamStatusCtx, {
+            type: 'doughnut',
+            data: { 
+                labels: ['已确认', '待确认', '已完成'], 
+                datasets: [{ 
+                    data: [teamConfirmed, teamPending, teamCompleted], 
+                    backgroundColor: ['#10b981', '#ef4444', '#3b82f6'], 
+                    borderWidth: 0 
+                }] 
+            },
+            options: { 
+                responsive: true, 
+                maintainAspectRatio: false, 
+                plugins: { 
+                    legend: { position: 'bottom' },
+                    tooltip: {
+                        callbacks: {
+                            label: function(context) {
+                                const label = context.label || '';
+                                const value = context.raw || 0;
+                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                const percentage = Math.round((value / total) * 100);
+                                return `${label}: ${value}个 (${percentage}%)`;
+                            }
+                        }
+                    }
+                } 
+            }
+        });
+    }
+}
+
+
+// ===================== 全局事件监听（优化版） =====================
+document.addEventListener('DOMContentLoaded', function() {
+    // 初始化仪表盘数据和图表
+    if (typeof updateDashboardStats === 'function') {
+        updateDashboardStats();
+    }
+    if (typeof initCharts === 'function') {
+        initCharts();
+    }
+
+    // 初始化导游排班表模块
+    GuideScheduleModule.init();
+
+    // 1. 导航切换（页面标签切换）
+    document.querySelectorAll('.nav-link[data-target]').forEach(link => {
+        link.addEventListener('click', function(e) {
+            e.preventDefault();
+            
+            // 切换导航激活状态
+            document.querySelectorAll('.nav-link').forEach(el => el.classList.remove('nav-active'));
+            this.classList.add('nav-active');
+            
+            // 切换页面内容显示
+            document.querySelectorAll('.page-content').forEach(c => c.classList.add('hidden'));
+            const target = this.getAttribute('data-target');
+            const targetEl = document.getElementById(target);
+            if (targetEl) {
+                targetEl.classList.remove('hidden');
+                
+                // 切换到排班表时刷新数据
+                if (target === 'schedule' && typeof GuideScheduleModule.refresh === 'function') {
+                    GuideScheduleModule.refresh();
+                }
+            }
+            
+            // 更新页面标题
+            const titleMap = {
+                dashboard: '数据概览', 
+                vehicles: '车辆管理', 
+                guides: '导游管理',
+                teams: '团队调度', 
+                schedule: '月排班表', 
+                backup: '数据备份',
+                version: '版本说明'
+            };
+            const titleEl = document.getElementById('page-title');
+            if (titleEl) {
+                titleEl.textContent = titleMap[target] || '数据概览';
+            }
+        });
+    });
+
+    // 2. 备注模态框关闭
+    const closeRemarkBtn = document.getElementById('close-remark-modal');
+    if (closeRemarkBtn && typeof closeRemarkModal === 'function') {
+        closeRemarkBtn.addEventListener('click', closeRemarkModal);
+    }
+
+    // 3. 数据备份/导入导出
+    const createBackupBtn = document.getElementById('btn-create-backup');
+    if (createBackupBtn && typeof createBackup === 'function') {
+        createBackupBtn.addEventListener('click', createBackup);
+    }
+    
+    const importFileInput = document.getElementById('backup-import-file');
+    if (importFileInput && typeof importBackupFile === 'function') {
+        importFileInput.addEventListener('change', (e) => {
+            if (e.target.files[0]) {
+                importBackupFile(e.target.files[0]);
+            }
+            e.target.value = ''; // 清空文件选择
+        });
+    }
+
+    // 4. 数据刷新
+    const refreshBtn = document.getElementById('btn-refresh-data');
+    if (refreshBtn) {
+        refreshBtn.addEventListener('click', () => {
+            if (typeof updateDashboardStats === 'function') updateDashboardStats();
+            if (typeof initCharts === 'function') initCharts();
+            if (typeof GuideScheduleModule.refresh === 'function') GuideScheduleModule.refresh();
+            alert('数据刷新成功！');
+        });
+    }
+
+    // 5. 筛选器监听（实时过滤表格数据）
+    // 车辆筛选
+    ['vehicle-status-filter', 'vehicle-type-filter', 'vehicle-capacity-filter'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && typeof renderVehiclesTable === 'function') {
+            el.addEventListener('change', renderVehiclesTable);
+        }
+    });
+    const vehicleSearch = document.getElementById('vehicle-search');
+    if (vehicleSearch && typeof renderVehiclesTable === 'function') {
+        vehicleSearch.addEventListener('input', renderVehiclesTable);
+    }
+
+    // 导游筛选
+    ['guide-status-filter', 'guide-specialty-filter', 'guide-language-filter'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && typeof renderGuidesList === 'function') {
+            el.addEventListener('change', renderGuidesList);
+        }
+    });
+    const guideSearch = document.getElementById('guide-search');
+    if (guideSearch && typeof renderGuidesList === 'function') {
+        guideSearch.addEventListener('input', renderGuidesList);
+    }
+
+    // 团队筛选
+    ['team-status-filter', 'team-type-filter', 'team-size-filter'].forEach(id => {
+        const el = document.getElementById(id);
+        if (el && typeof renderTeamsTable === 'function') {
+            el.addEventListener('change', renderTeamsTable);
+        }
+    });
+    const teamSearch = document.getElementById('team-search');
+    if (teamSearch && typeof renderTeamsTable === 'function') {
+        teamSearch.addEventListener('input', renderTeamsTable);
+    }
+});
+
+       
+    </script>
+</body>
+</html>
